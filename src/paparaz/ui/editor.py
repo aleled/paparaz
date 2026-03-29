@@ -149,15 +149,15 @@ class EditorWindow(QMainWindow):
         self._side_panel.number_size_changed.connect(self._on_number_size_changed)
         self._side_panel.number_text_color_changed.connect(self._on_number_text_color_changed)
 
-        # Text tool signals
-        self._side_panel.text_bold_changed.connect(self._text_tool.set_bold)
-        self._side_panel.text_italic_changed.connect(self._text_tool.set_italic)
-        self._side_panel.text_underline_changed.connect(self._text_tool.set_underline)
+        # Text tool signals - update tool state AND selected element
+        self._side_panel.text_bold_changed.connect(self._on_text_bold)
+        self._side_panel.text_italic_changed.connect(self._on_text_italic)
+        self._side_panel.text_underline_changed.connect(self._on_text_underline)
         self._side_panel.text_strikethrough_changed.connect(self._on_strikethrough)
-        self._side_panel.text_alignment_changed.connect(self._text_tool.set_alignment)
-        self._side_panel.text_direction_changed.connect(self._text_tool.set_direction)
-        self._side_panel.text_bg_enabled_changed.connect(self._text_tool.set_bg_enabled)
-        self._side_panel.text_bg_color_changed.connect(self._text_tool.set_bg_color)
+        self._side_panel.text_alignment_changed.connect(self._on_text_alignment)
+        self._side_panel.text_direction_changed.connect(self._on_text_direction)
+        self._side_panel.text_bg_enabled_changed.connect(self._on_text_bg_enabled)
+        self._side_panel.text_bg_color_changed.connect(self._on_text_bg_color)
 
         # Canvas signals
         self._canvas.element_selected.connect(self._on_element_selected)
@@ -227,6 +227,29 @@ class EditorWindow(QMainWindow):
             elem.text_color = color
             self._canvas.update()
 
+    # --- Text property handlers: update tool + selected element ---
+
+    def _on_text_bold(self, enabled: bool):
+        self._text_tool.set_bold(enabled)
+        elem = self._canvas.selected_element
+        if isinstance(elem, TextElement):
+            elem.bold = enabled
+            self._canvas.update()
+
+    def _on_text_italic(self, enabled: bool):
+        self._text_tool.set_italic(enabled)
+        elem = self._canvas.selected_element
+        if isinstance(elem, TextElement):
+            elem.italic = enabled
+            self._canvas.update()
+
+    def _on_text_underline(self, enabled: bool):
+        self._text_tool.set_underline(enabled)
+        elem = self._canvas.selected_element
+        if isinstance(elem, TextElement):
+            elem.underline = enabled
+            self._canvas.update()
+
     def _on_strikethrough(self, enabled: bool):
         self._text_tool.strikethrough = enabled
         if self._text_tool._active_text:
@@ -235,6 +258,44 @@ class EditorWindow(QMainWindow):
         elem = self._canvas.selected_element
         if isinstance(elem, TextElement):
             elem.strikethrough = enabled
+            self._canvas.update()
+
+    def _on_text_alignment(self, align: str):
+        self._text_tool.set_alignment(align)
+        elem = self._canvas.selected_element
+        if isinstance(elem, TextElement):
+            from PySide6.QtCore import Qt
+            mapping = {
+                "left": Qt.AlignmentFlag.AlignLeft,
+                "center": Qt.AlignmentFlag.AlignCenter,
+                "right": Qt.AlignmentFlag.AlignRight,
+            }
+            elem.alignment = mapping.get(align, Qt.AlignmentFlag.AlignLeft)
+            self._canvas.update()
+
+    def _on_text_direction(self, direction: str):
+        self._text_tool.set_direction(direction)
+        elem = self._canvas.selected_element
+        if isinstance(elem, TextElement):
+            from PySide6.QtCore import Qt
+            elem.direction = (
+                Qt.LayoutDirection.RightToLeft if direction == "rtl"
+                else Qt.LayoutDirection.LeftToRight
+            )
+            self._canvas.update()
+
+    def _on_text_bg_enabled(self, enabled: bool):
+        self._text_tool.set_bg_enabled(enabled)
+        elem = self._canvas.selected_element
+        if isinstance(elem, TextElement):
+            elem.bg_enabled = enabled
+            self._canvas.update()
+
+    def _on_text_bg_color(self, color: str):
+        self._text_tool.set_bg_color(color)
+        elem = self._canvas.selected_element
+        if isinstance(elem, TextElement):
+            elem.bg_color = color
             self._canvas.update()
 
     def _on_zoom_changed(self, zoom: float):

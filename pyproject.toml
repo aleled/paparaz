@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "paparaz"
+version = "0.5.0"
+description = "Lightweight screen capture and annotation tool for Windows"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.6.0",
+    "Pillow>=10.0.0",
+    "pywin32>=306",
+]
+
+[project.scripts]
+paparaz = "paparaz.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

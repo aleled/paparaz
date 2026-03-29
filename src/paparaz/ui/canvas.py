@@ -17,6 +17,26 @@ from paparaz.core.history import HistoryManager, Command
 from paparaz.tools.base import BaseTool, ToolType
 
 
+def _clone_element(elem: AnnotationElement) -> AnnotationElement:
+    """Shallow-copy an element, deep-copying all Qt value types and style."""
+    import copy
+    new = copy.copy(elem)
+    new.style = copy.copy(elem.style)
+    if hasattr(elem, 'rect'):
+        new.rect = QRectF(elem.rect)
+    if hasattr(elem, 'start'):
+        new.start = QPointF(elem.start)
+    if hasattr(elem, 'end'):
+        new.end = QPointF(elem.end)
+    if hasattr(elem, 'points'):
+        new.points = [QPointF(p) for p in elem.points]
+    if hasattr(elem, 'position'):
+        new.position = QPointF(elem.position)
+    if hasattr(elem, 'pixmap') and elem.pixmap is not None:
+        new.pixmap = QPixmap(elem.pixmap)
+    return new
+
+
 class AnnotationCanvas(QWidget):
     """Widget that displays the captured image and handles annotation drawing."""
 
@@ -45,6 +65,7 @@ class AnnotationCanvas(QWidget):
         self._cap_style = "round"
         self._join_style = "round"
         self._dash_pattern = "solid"
+        self._filled = False
 
         # Zoom/pan
         self._zoom = 1.0
@@ -52,15 +73,16 @@ class AnnotationCanvas(QWidget):
         self._panning = False
         self._pan_start = QPointF()
 
+        self._element_clipboard: Optional[AnnotationElement] = None
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAcceptDrops(True)
         self._update_size()
 
     def _update_size(self):
-        w = int(self._background.width() * self._zoom)
-        h = int(self._background.height() * self._zoom)
-        self.setMinimumSize(w, h)
+        # Do not constrain the canvas widget to background size;
+        # the editor window can be freely resized and the canvas clips to fit.
+        pass
 
     def set_tool(self, tool: BaseTool):
         if self._tool:
@@ -92,88 +114,163 @@ class AnnotationCanvas(QWidget):
 
     # --- Style setters ---
 
+    def _record_style_attr(self, key: str, attr: str, old_val, new_val):
+        """Record an already-applied elem.style.<attr> change for undo."""
+        elem = self.selected_element
+        if not elem:
+            return
+        def do():
+            if elem in self.elements:
+                setattr(elem.style, attr, new_val); self.update()
+        def undo():
+            if elem in self.elements:
+                setattr(elem.style, attr, old_val); self.update()
+        self.history.record(Command(key, do, undo), f"{key}_{id(elem)}")
+
+    def _record_shadow_attr(self, key: str, attr: str, old_val, new_val):
+        """Record an already-applied elem.style.shadow.<attr> change for undo."""
+        elem = self.selected_element
+        if not elem:
+            return
+        def do():
+            if elem in self.elements:
+                setattr(elem.style.shadow, attr, new_val); self.update()
+        def undo():
+            if elem in self.elements:
+                setattr(elem.style.shadow, attr, old_val); self.update()
+        self.history.record(Command(key, do, undo), f"{key}_{id(elem)}")
+
     def set_foreground_color(self, color: str):
         self._fg_color = color
         if self.selected_element:
+            old = self.selected_element.style.foreground_color
             self.selected_element.style.foreground_color = color
+            self._record_style_attr("Fg color", "foreground_color", old, color)
             self.update()
 
     def set_background_color(self, color: str):
         self._bg_color = color
         if self.selected_element:
+            old = self.selected_element.style.background_color
             self.selected_element.style.background_color = color
+            self._record_style_attr("Bg color", "background_color", old, color)
             self.update()
 
     def set_line_width(self, width: float):
         self._line_width = width
         if self.selected_element:
+            old = self.selected_element.style.line_width
             self.selected_element.style.line_width = width
+            self._record_style_attr("Line width", "line_width", old, width)
             self.update()
 
     def set_font_family(self, family: str):
         self._font_family = family
         if self.selected_element:
+            old = self.selected_element.style.font_family
             self.selected_element.style.font_family = family
+            self._record_style_attr("Font", "font_family", old, family)
             self.update()
 
     def set_font_size(self, size: int):
         self._font_size = size
         if self.selected_element:
+            old = self.selected_element.style.font_size
             self.selected_element.style.font_size = size
+            self._record_style_attr("Font size", "font_size", old, size)
             self.update()
 
     def set_shadow_enabled(self, enabled: bool):
         self._shadow.enabled = enabled
         if self.selected_element:
+            old = self.selected_element.style.shadow.enabled
             self.selected_element.style.shadow.enabled = enabled
+            self._record_shadow_attr("Shadow", "enabled", old, enabled)
             self.update()
 
     def set_shadow_color(self, color: str):
         self._shadow.color = color
         if self.selected_element:
+            old = self.selected_element.style.shadow.color
             self.selected_element.style.shadow.color = color
+            self._record_shadow_attr("Shadow color", "color", old, color)
             self.update()
 
     def set_shadow_offset_x(self, offset: float):
         self._shadow.offset_x = offset
         if self.selected_element:
+            old = self.selected_element.style.shadow.offset_x
             self.selected_element.style.shadow.offset_x = offset
+            self._record_shadow_attr("Shadow X", "offset_x", old, offset)
             self.update()
 
     def set_shadow_offset_y(self, offset: float):
         self._shadow.offset_y = offset
         if self.selected_element:
+            old = self.selected_element.style.shadow.offset_y
             self.selected_element.style.shadow.offset_y = offset
+            self._record_shadow_attr("Shadow Y", "offset_y", old, offset)
             self.update()
 
     def set_shadow_blur(self, blur: float):
         self._shadow.blur_radius = blur
         if self.selected_element:
+            old = self.selected_element.style.shadow.blur_radius
             self.selected_element.style.shadow.blur_radius = blur
+            self._record_shadow_attr("Shadow blur", "blur_radius", old, blur)
             self.update()
 
     def set_opacity(self, opacity: float):
         self._opacity = opacity
         if self.selected_element:
+            old = self.selected_element.style.opacity
             self.selected_element.style.opacity = opacity
+            self._record_style_attr("Opacity", "opacity", old, opacity)
+            self.update()
+
+    def set_rotation(self, degrees: float):
+        if self.selected_element:
+            old = self.selected_element.rotation
+            new = degrees % 360.0
+            self.selected_element.rotation = new
+            if old != new:
+                elem = self.selected_element
+                from paparaz.core.history import Command
+                self.history.record(Command(
+                    "Rotate",
+                    lambda e=elem, v=new: setattr(e, 'rotation', v) or self.update(),
+                    lambda e=elem, v=old: setattr(e, 'rotation', v) or self.update(),
+                ))
             self.update()
 
     def set_cap_style(self, cap: str):
         self._cap_style = cap
         if self.selected_element:
+            old = self.selected_element.style.cap_style
             self.selected_element.style.cap_style = cap
+            self._record_style_attr("Cap style", "cap_style", old, cap)
             self.update()
 
     def set_join_style(self, join: str):
         self._join_style = join
         if self.selected_element:
+            old = self.selected_element.style.join_style
             self.selected_element.style.join_style = join
+            self._record_style_attr("Join style", "join_style", old, join)
             self.update()
 
     def set_dash_pattern(self, pattern: str):
         self._dash_pattern = pattern
         if self.selected_element:
+            old = self.selected_element.style.dash_pattern
             self.selected_element.style.dash_pattern = pattern
+            self._record_style_attr("Dash", "dash_pattern", old, pattern)
+            self.update()
+
+    def set_filled(self, filled: bool):
+        self._filled = filled
+        if self.selected_element and hasattr(self.selected_element, "filled"):
+            self.selected_element.filled = filled
             self.update()
 
     # --- Paste ---
@@ -205,6 +302,19 @@ class AnnotationCanvas(QWidget):
                     self.add_element(elem)
                     self.select_element(elem)
                     return True
+
+        if mime and mime.hasText():
+            text = mime.text().strip()
+            if text:
+                pos = QPointF(
+                    self._background.width() / 2 - 75,
+                    self._background.height() / 2 - 20,
+                )
+                elem = TextElement(pos, text, self.current_style())
+                self.add_element(elem)
+                self.select_element(elem)
+                return True
+
         return False
 
     # --- Zoom ---
@@ -258,12 +368,27 @@ class AnnotationCanvas(QWidget):
         self.history.execute(cmd)
 
     def select_element(self, element: Optional[AnnotationElement]):
-        if self.selected_element:
-            self.selected_element.selected = False
+        # Clear any multi-selection first
+        for e in self.elements:
+            e.selected = False
         self.selected_element = element
         if element:
             element.selected = True
         self.element_selected.emit(element)
+        self.update()
+
+    def select_multiple(self, elements: list):
+        """Select a list of elements (rubber-band multi-select)."""
+        for e in self.elements:
+            e.selected = False
+        self.selected_element = None
+        for e in elements:
+            e.selected = True
+        if len(elements) == 1:
+            self.selected_element = elements[0]
+            self.element_selected.emit(elements[0])
+        else:
+            self.element_selected.emit(None)
         self.update()
 
     # --- Z-order ---
@@ -458,6 +583,103 @@ class AnnotationCanvas(QWidget):
             pos = self._screen_to_canvas(event.position())
             self._tool.on_release(pos, event)
 
+    def contextMenuEvent(self, event):
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QContextMenuEvent
+
+        # Only show for SELECT tool (crop/slice handle right-click themselves)
+        if not self._tool or self._tool.tool_type != ToolType.SELECT:
+            event.ignore()
+            return
+
+        canvas_pos = self._screen_to_canvas(QPointF(event.pos()))
+
+        clicked_elem = None
+        for elem in reversed(self.elements):
+            if elem.visible and not elem.locked and elem.contains_point(canvas_pos):
+                clicked_elem = elem
+                break
+
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background: #1e1e2e; color: #ccc; border: 1px solid #555; "
+            "        font-size: 12px; padding: 2px; } "
+            "QMenu::item { padding: 5px 20px 5px 12px; } "
+            "QMenu::item:selected { background: #740096; color: #fff; } "
+            "QMenu::separator { background: #444; height: 1px; margin: 3px 8px; }"
+        )
+
+        copy_act = dup_act = del_act = paste_elem_act = paste_img_act = None
+        ocr_act = del_multi_act = None
+
+        # Multi-selection menu (rubber-band or shift+click)
+        multi = getattr(self._tool, '_multi_selected', [])
+        if len(multi) > 1:
+            ocr_act = menu.addAction(f"Recognize text (OCR)  [{len(multi)} objects]")
+            menu.addSeparator()
+            del_multi_act = menu.addAction(f"Delete {len(multi)} selected objects")
+        elif clicked_elem:
+            if clicked_elem is not self.selected_element:
+                self.select_element(clicked_elem)
+            copy_act = menu.addAction("Copy")
+            dup_act  = menu.addAction("Duplicate")
+            menu.addSeparator()
+            del_act  = menu.addAction("Delete")
+
+        if self._element_clipboard:
+            if menu.actions():
+                menu.addSeparator()
+            paste_elem_act = menu.addAction("Paste")
+
+        clipboard = QApplication.clipboard()
+        cb_pix = clipboard.pixmap()
+        if cb_pix and not cb_pix.isNull():
+            if menu.actions():
+                menu.addSeparator()
+            paste_img_act = menu.addAction("Paste image from clipboard")
+
+        if not menu.actions():
+            return
+
+        action = menu.exec(event.globalPos())
+        if action is None:
+            return
+        if ocr_act and action == ocr_act:
+            from paparaz.ui.ocr import ocr_selected_elements
+            ocr_selected_elements(self, list(multi))
+        elif del_multi_act and action == del_multi_act:
+            from paparaz.core.history import Command
+            to_del = [e for e in list(multi) if e in self.elements]
+            indices = {id(e): self.elements.index(e) for e in to_del}
+            def _do(es=to_del):
+                for e in es:
+                    if e in self.elements:
+                        self.elements.remove(e)
+                    e.selected = False
+                self.selected_element = None
+                self.element_selected.emit(None)
+                self.update()
+            def _undo(es=to_del, idx=indices):
+                for e in reversed(es):
+                    i = idx[id(e)]
+                    self.elements.insert(min(i, len(self.elements)), e)
+                self.update()
+            self.history.execute(Command("Delete selected", _do, _undo))
+            multi.clear()
+        elif copy_act and action == copy_act:
+            self.copy_element(clicked_elem)
+        elif dup_act and action == dup_act:
+            new = _clone_element(clicked_elem)
+            new.move_by(20, 20)
+            self.add_element(new)
+            self.select_element(new)
+        elif del_act and action == del_act:
+            self.delete_element(clicked_elem)
+        elif paste_elem_act and action == paste_elem_act:
+            self.paste_element()
+        elif paste_img_act and action == paste_img_act:
+            self.paste_from_clipboard()
+
     def keyPressEvent(self, event: QKeyEvent):
         if self._tool:
             self._tool.on_key_press(event)
@@ -499,3 +721,73 @@ class AnnotationCanvas(QWidget):
                 painter.setOpacity(elem.style.opacity)
                 elem.paint(painter)
                 painter.setOpacity(1.0)
+
+    # --- Canvas resize / crop ---
+
+    def resize_canvas(self, new_w: int, new_h: int):
+        """Create a new canvas of given size, centered on old content. Undoable."""
+        old_bg = QPixmap(self._background)
+
+        def do():
+            new_bg = QPixmap(new_w, new_h)
+            new_bg.fill(QColor(255, 255, 255))
+            p = QPainter(new_bg)
+            ox = (new_w - old_bg.width()) // 2
+            oy = (new_h - old_bg.height()) // 2
+            p.drawPixmap(ox, oy, old_bg)
+            p.end()
+            for elem in self.elements:
+                elem.move_by(ox, oy)
+            self._background = new_bg
+            self._update_size()
+            self.update()
+
+        def undo():
+            # Compute the same offset that do() used, then reverse it
+            ox = (self._background.width() - old_bg.width()) // 2
+            oy = (self._background.height() - old_bg.height()) // 2
+            for elem in self.elements:
+                elem.move_by(-ox, -oy)
+            self._background = QPixmap(old_bg)
+            self._update_size()
+            self.update()
+
+        self.history.execute(Command("Resize canvas", do, undo))
+
+    def copy_element(self, elem: AnnotationElement):
+        """Store a clone of elem in the internal element clipboard."""
+        self._element_clipboard = _clone_element(elem)
+
+    def paste_element(self):
+        """Paste the previously copied element, offset by 20px."""
+        if self._element_clipboard is None:
+            return
+        new = _clone_element(self._element_clipboard)
+        new.move_by(20, 20)
+        self.add_element(new)
+        self.select_element(new)
+
+    def crop_canvas(self, rect: QRectF):
+        """Crop the canvas to given rect (in canvas coordinates). Undoable."""
+        old_bg = QPixmap(self._background)
+        bg_rect = QRectF(0, 0, old_bg.width(), old_bg.height())
+        crop = rect.intersected(bg_rect).toRect()
+        if crop.width() < 1 or crop.height() < 1:
+            return
+        ox, oy = -crop.x(), -crop.y()
+
+        def do():
+            for elem in self.elements:
+                elem.move_by(ox, oy)
+            self._background = old_bg.copy(crop)
+            self._update_size()
+            self.update()
+
+        def undo():
+            for elem in self.elements:
+                elem.move_by(-ox, -oy)
+            self._background = QPixmap(old_bg)
+            self._update_size()
+            self.update()
+
+        self.history.execute(Command("Crop canvas", do, undo))

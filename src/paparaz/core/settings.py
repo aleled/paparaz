@@ -47,6 +47,14 @@ class AppSettings:
     recent_captures: list = field(default_factory=list)
     max_recent: int = 10
     zoom_presets: list = field(default_factory=lambda: [25, 50, 75, 100, 150, 200, 400])
+    # Per-tool property memory: {"PEN": {"foreground_color": "#f00", "line_width": 3, ...}, ...}
+    tool_properties: dict = field(default_factory=dict)
+    # Last applied theme preset ID ("" = none applied)
+    default_theme_preset: str = ""
+    app_theme: str = "dark"
+    shadow_default_offset_x: float = 3.0
+    shadow_default_offset_y: float = 3.0
+    shadow_default_blur: float = 5.0
 
 
 class SettingsManager:
@@ -83,9 +91,12 @@ class SettingsManager:
                     setattr(self.settings.tool_defaults, k, v)
         for k in ("save_directory", "default_format", "jpg_quality",
                    "start_on_login", "show_tray_notification", "theme",
-                   "recent_captures", "max_recent", "zoom_presets"):
+                   "recent_captures", "max_recent", "zoom_presets",
+                   "default_theme_preset"):
             if k in data:
                 setattr(self.settings, k, data[k])
+        if "tool_properties" in data and isinstance(data["tool_properties"], dict):
+            self.settings.tool_properties = data["tool_properties"]
 
     def add_recent(self, path: str):
         if path in self.settings.recent_captures:

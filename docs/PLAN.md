@@ -95,14 +95,18 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 
 - [x] 6.1 Multi-monitor aware capture (spans all screens, DPI-aware)
 - [ ] 6.2 Snap to edges/grid
-- [ ] 6.3 Copy/paste elements between captures
+- [x] 6.3 Copy/paste elements (right-click context menu: Copy, Duplicate, Paste)
 - [x] 6.4 Drag and drop image onto canvas
 - [x] 6.5 Recent captures gallery (tray submenu)
 - [x] 6.6 Pin screenshot (always-on-top floating window)
-- [ ] 6.7 Crop/resize captured region after capture
+- [x] 6.7 Crop/resize captured region after capture (CropTool with rotation support)
 - [x] 6.8 Element z-order (bring to front, send to back, move up/down with undo)
 - [x] 6.9 Delay capture (3/5/10 second timer via tray menu)
-- [x] 6.10 Settings dialog (hotkeys, defaults, theme, save directory)
+- [x] 6.10 Settings dialog (hotkeys, defaults, theme, shadow defaults, save directory)
+- [x] 6.11 Element rotation (side panel slider, rotation handle, all element types)
+- [x] 6.12 Multi-select (rubber-band + shift+click, group move, group delete, group OCR)
+- [x] 6.13 App themes (5 built-in: dark/midnight/ocean/forest/warm, selectable in settings)
+- [x] 6.14 Windows OCR (printed text recognition from selected elements via winrt)
 
 ---
 
@@ -139,6 +143,6 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Not started
 - [x] Completed
 
-## Current Status: Phase 5/6 complete, Phase 7 in progress
-**Version**: 0.7.0
+## Current Status: Phase 6 nearly complete, Phase 7 in progress
+**Version**: 0.8.0
 **Last updated**: 2026-03-29

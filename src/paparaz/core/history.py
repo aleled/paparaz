@@ -40,6 +40,28 @@ class HistoryManager(QObject):
         self._redo_stack.clear()
         self.history_changed.emit()
 
+    def record(self, command: Command, coalesce_key: str = None):
+        """Record a pre-executed command without calling execute().
+
+        If coalesce_key matches the most-recent entry's key, that entry's
+        do function is updated (so redo re-applies the latest value) while
+        the original undo function is preserved (so undo restores the value
+        before the whole run of changes — e.g. a slider drag).
+        """
+        if (coalesce_key and self._undo_stack
+                and getattr(self._undo_stack[-1], '_coalesce_key', None) == coalesce_key):
+            last = self._undo_stack[-1]
+            last._do = command._do
+            last.description = command.description
+        else:
+            if coalesce_key:
+                command._coalesce_key = coalesce_key
+            self._undo_stack.append(command)
+            if len(self._undo_stack) > self._max_size:
+                self._undo_stack.pop(0)
+            self._redo_stack.clear()
+        self.history_changed.emit()
+
     def undo(self) -> bool:
         if not self._undo_stack:
             return False

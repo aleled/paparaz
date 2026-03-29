@@ -24,7 +24,7 @@ class PapaRazApp(QObject):
 
         self._tray = TrayIcon()
         self._overlay = None
-        self._editor = None
+        self._editors: list[EditorWindow] = []
         self._full_capture = None
         self._capture_screen = None  # QScreen being captured
         self._pin_windows: list[PinWindow] = []
@@ -58,8 +58,6 @@ class PapaRazApp(QObject):
         QTimer.singleShot(seconds * 1000, self._start_capture)
 
     def _start_capture(self):
-        if self._editor:
-            self._editor.hide()
 
         # Find which monitor the cursor is on
         cursor_pos = QCursor.pos()
@@ -88,8 +86,7 @@ class PapaRazApp(QObject):
             self._overlay = None
 
         if self._full_capture and self._capture_screen:
-            # rect is in widget-local logical pixels
-            # Scale to physical pixels in the capture
+            # rect is in widget-local logical pixels → convert to physical for cropping
             dpr = self._capture_screen.devicePixelRatio()
             px = int(rect.x() * dpr)
             py = int(rect.y() * dpr)
@@ -97,6 +94,19 @@ class PapaRazApp(QObject):
             ph = int(rect.height() * dpr)
 
             cropped = capture_region(self._full_capture, px, py, pw, ph)
+
+            # Downscale physical-pixel capture back to logical pixels so the editor
+            # shows the content at exactly 100% visual scale (1 logical px = 1 canvas px).
+            if dpr != 1.0:
+                from PySide6.QtCore import Qt as _Qt
+                lw = max(1, int(round(pw / dpr)))
+                lh = max(1, int(round(ph / dpr)))
+                cropped = cropped.scaled(
+                    lw, lh,
+                    _Qt.AspectRatioMode.IgnoreAspectRatio,
+                    _Qt.TransformationMode.SmoothTransformation,
+                )
+
             self._open_editor(cropped)
 
     def _on_selection_cancelled(self):
@@ -105,30 +115,43 @@ class PapaRazApp(QObject):
             self._overlay = None
 
     def _open_editor(self, pixmap: QPixmap, elements: list = None):
-        self._editor = EditorWindow(pixmap, settings_manager=self._settings)
-        self._editor.closed.connect(self._on_editor_closed)
-        self._editor.pin_requested.connect(self._pin_screenshot)
+        editor = EditorWindow(pixmap, settings_manager=self._settings)
+        self._editors.append(editor)
+        editor.closed.connect(lambda e=editor: self._on_editor_closed(e))
+        editor.pin_requested.connect(self._pin_screenshot)
+        editor.file_saved.connect(self._on_file_saved)
         if elements:
-            self._editor._canvas.elements = elements
-            self._editor._canvas.update()
+            editor._canvas.elements = elements
+            editor._canvas.update()
 
-        # Size to capture + toolbar chrome, tight fit, centered
+        # Size to capture + toolbar chrome, tight fit, offset each new window slightly
         screen = QApplication.primaryScreen()
         if screen:
             avail = screen.availableGeometry()
-            chrome_w = 16   # Minimal border
-            chrome_h = 60   # Toolbar + status + borders
+            chrome_w = 16
+            chrome_h = 60
             win_w = min(pixmap.width() + chrome_w, avail.width() - 40)
             win_h = min(pixmap.height() + chrome_h, avail.height() - 40)
             win_w = max(win_w, 400)
             win_h = max(win_h, 250)
-            x = avail.x() + (avail.width() - win_w) // 2
-            y = avail.y() + (avail.height() - win_h) // 2
-            self._editor.setGeometry(x, y, win_w, win_h)
-        self._editor.show()
+            # Cascade offset so windows don't stack on top of each other
+            offset = (len(self._editors) - 1) * 24
+            x = avail.x() + (avail.width()  - win_w) // 2 + offset
+            y = avail.y() + (avail.height() - win_h) // 2 + offset
+            # Keep within screen
+            x = min(x, avail.right()  - win_w)
+            y = min(y, avail.bottom() - win_h)
+            editor.setGeometry(x, y, win_w, win_h)
+        editor.show()
 
-    def _on_editor_closed(self):
-        self._editor = None
+    def _on_file_saved(self, path: str):
+        """Record saved file in recent captures and refresh tray menu."""
+        self._settings.add_recent(path)
+        self._tray.update_recent(self._settings.settings.recent_captures)
+
+    def _on_editor_closed(self, editor: EditorWindow):
+        if editor in self._editors:
+            self._editors.remove(editor)
 
     def _open_image(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -165,8 +188,8 @@ class PapaRazApp(QObject):
 
     def _quit(self):
         self._hotkey_listener.stop()
-        for pin in self._pin_windows:
+        for pin in list(self._pin_windows):
             pin.close()
-        if self._editor:
-            self._editor.close()
+        for editor in list(self._editors):
+            editor.close()
         self._app.quit()

@@ -1,5 +1,78 @@
 # PapaRaZ - Changelog
 
+## [0.8.0] - 2026-03-29
+
+### Rotation System
+- **Element rotation** fully wired: side panel rotation slider → `canvas.set_rotation()` → all element types
+- `_apply_rotation()` fixed to use explicit `cx, cy` floats (PySide6 overload resolution for `painter.translate`)
+- **LineElement** and **PenElement/BrushElement** paint with rotation via `painter.save/translate/rotate/restore` + `else` branch for zero rotation
+- `contains_point()` on Line/Pen/Brush applies inverse rotation before hit-test
+
+### Slice Tool Rotation Fix
+- Correct rotated pixel extraction using inverse QPainter transform (translate+rotate, not AABB)
+- Background erasure uses `QPolygonF` for the actual rotated polygon shape (not a bounding rectangle)
+- Right-click or Enter to confirm slice; result inserted as axis-aligned `ImageElement`
+
+### Crop Tool Rotation Fix
+- `_transform_element_geom()` rewritten with correct per-type rules:
+  - **Rect elements**: preserve size, move center via `t.map(r.center())`, adjust rotation by `-crop_rotation`
+  - **Line/Arrow** (start/end coords): transform coordinates, keep rotation **unchanged** (coords already encode orientation — no double-counting)
+  - **Pen/Brush** (points): transform all points, keep rotation unchanged
+  - **Number** (position): transform position, adjust rotation
+
+### App Themes
+- `ui/app_theme.py` — 5 built-in themes: `dark`, `midnight`, `ocean`, `forest`, `warm`
+- QSS templates with `{accent}`, `{bg1}`, `{bg2}`, `{fg}`, `{border}` placeholders
+- `build_tool_qss()`, `build_panel_qss()`, `build_dialog_qss()` per-surface builders
+- Theme selector combo added to Settings → General tab
+- `EditorWindow.apply_app_theme(theme_id)` applies theme on startup and on settings change
+
+### Shadow Blur Fix
+- `QGraphicsBlurEffect` through `scene.render()` is unreliable in PySide6 — replaced with `_scale_blur()`
+- `_scale_blur()`: three-pass downscale/upscale approximation of Gaussian blur (no Qt scene required)
+- `_paint_shadow()` on all elements now uses `_scale_blur()` — blur visually correct across all tools
+
+### Shadow Settings Defaults
+- `AppSettings` gains: `shadow_default_offset_x`, `shadow_default_offset_y`, `shadow_default_blur`
+- Settings dialog → General tab: DEFAULT SHADOW group with spinboxes for X, Y, blur
+- New elements inherit shadow defaults from settings
+
+### Context Menu (Right-Click on Elements)
+- Right-click any element in Select tool → **Copy**, **Duplicate**, **Delete**
+- Right-click empty canvas → **Paste** (element clipboard) or **Paste image from clipboard**
+- `canvas.copy_element()`, `canvas.paste_element()`, `_clone_element()` helpers
+- SelectTool `on_press/on_release` return early on right-click (handled by `contextMenuEvent`)
+
+### Multi-Select
+- **Rubber-band** drag on empty canvas selects all intersecting elements → group move, group delete
+- **Shift+click** adds/removes individual elements from the selection group
+- Multi-select stored in `SelectTool._multi_selected: list`; `canvas.select_multiple()` updates `selected` flags
+- Group move is undoable (before/after geometry snapshots for all elements)
+- Delete key removes all multi-selected elements
+
+### OCR — Recognize Handwriting/Text
+- Right-click on multi-selection → **Recognize text (OCR) [N objects]**
+- Selected elements rendered to white pixmap (3× scale for OCR accuracy) via `_render_elements()`
+- Windows OCR via `winrt` packages (no cloud, no API key) — works well for **printed text**
+- Background thread (`threading.Thread`) + `_ResultBridge` QObject for non-blocking UI
+- Result dialog: editable text box before committing; orange warning if OCR returns empty
+- On confirm: original elements deleted, `TextElement` inserted at same position — fully undoable
+- Graceful error messages if `winrt` packages not installed (with exact `pip install` commands)
+- **Note:** Windows OCR (`Windows.Media.Ocr`) recognizes printed text only; handwriting recognition requires a different engine (EasyOCR or OpenAI Vision — deferred)
+
+### Frameless Aero Editor
+- Editor window is frameless, sized to the captured region
+- Custom title bar with drag, minimize, close
+
+### Exit Button Rename
+- "Exit & Copy" button renamed to "Copy to clipboard & Exit"
+
+### New Files
+- `ui/app_theme.py` — Theme QSS builder (5 built-in themes)
+- `ui/ocr.py` — Windows OCR integration (winrt, threading bridge, result dialog)
+
+---
+
 ## [0.7.0] - 2026-03-29
 
 ### Adaptive Toolbar (Flow Layout)

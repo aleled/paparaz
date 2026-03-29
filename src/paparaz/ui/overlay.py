@@ -153,13 +153,49 @@ class RegionSelector(QWidget):
                 self.update()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape:
+        key = event.key()
+        mods = event.modifiers()
+
+        if key == Qt.Key.Key_Escape:
             self.selection_cancelled.emit()
             self.close()
-        elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if self._has_selection and not self._selection.isNull():
                 self.region_selected.emit(self._selection)
                 self.close()
+        elif key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down):
+            if self._has_selection:
+                step = 10 if mods & Qt.KeyboardModifier.ShiftModifier else 1
+                # Ctrl+Arrow resizes the selection (moves the far edge)
+                # Plain Arrow moves the whole selection
+                use_resize = bool(mods & Qt.KeyboardModifier.ControlModifier)
+                dx = dy = dw = dh = 0
+                if key == Qt.Key.Key_Left:
+                    if use_resize: dw = -step
+                    else: dx = -step
+                elif key == Qt.Key.Key_Right:
+                    if use_resize: dw = step
+                    else: dx = step
+                elif key == Qt.Key.Key_Up:
+                    if use_resize: dh = -step
+                    else: dy = -step
+                elif key == Qt.Key.Key_Down:
+                    if use_resize: dh = step
+                    else: dy = step
+
+                sel = self._selection.normalized()
+                new_sel = QRect(
+                    sel.x() + dx, sel.y() + dy,
+                    max(5, sel.width() + dw), max(5, sel.height() + dh),
+                )
+                # Clamp to widget bounds
+                new_sel = new_sel.intersected(self.rect())
+                if new_sel.width() >= 5 and new_sel.height() >= 5:
+                    self._selection = new_sel
+                    self._start = new_sel.topLeft()
+                    self._end = new_sel.bottomRight()
+                    self._update_dim_label()
+                    self.update()
 
     def _update_dim_label(self):
         if self._selection.isNull():

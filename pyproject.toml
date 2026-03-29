@@ -4,7 +4,7 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "paparaz"
-version = "0.6.0"
+version = "0.8.0"
 description = "Lightweight screen capture and annotation tool for Windows"
 requires-python = ">=3.11"
 dependencies = [

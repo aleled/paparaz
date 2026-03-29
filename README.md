@@ -1,6 +1,11 @@
 # PapaRaZ - Screen Capture & Annotation Tool
 
+**Author:** Alejandro Lichtenfeld
+**License:** MIT — see [LICENSE](LICENSE)
+
 A lightweight, Flameshot-inspired screen capture and annotation utility for Windows. Every annotation is a discrete, selectable object with full property editing.
+
+> **License note:** PapaRaZ is an independent Python/PySide6 reimplementation inspired by [Flameshot](https://flameshot.org) (GPL-3.0). No Flameshot source code was copied or adapted.
 
 ## Features
 
@@ -13,7 +18,7 @@ A lightweight, Flameshot-inspired screen capture and annotation utility for Wind
 ### 12 Annotation Tools
 | Tool | Shortcut | Description |
 |------|----------|-------------|
-| Select | V | Click to select, drag to move, handles to resize, Delete to remove |
+| Select | V | Click to select, drag to move, handles to resize/rotate, Delete to remove |
 | Pen | P | Freehand drawing with configurable stroke |
 | Brush | B | Soft semi-transparent strokes |
 | Line | L | Straight lines (Shift = snap to 45deg) |
@@ -28,10 +33,14 @@ A lightweight, Flameshot-inspired screen capture and annotation utility for Wind
 
 ### Object-Based Editing
 - Every annotation is a selectable, movable, resizable element
+- **Rotation**: drag the rotation handle (above selection) or use the side panel slider
 - **Purple selection handles** with dimension badge (W x H, position)
 - **Hover previews**: ghost shapes before placing, red highlight on eraser targets
 - **Double-click** text elements to re-edit them
 - **Property inspector**: selecting any element loads its properties into the side panel
+- **Multi-select**: rubber-band drag or Shift+click to select multiple elements; group move, group delete
+- **Right-click menu**: Copy, Duplicate, Delete on single elements; Recognize text (OCR) on multi-selection
+- **Windows OCR**: select pen/brush strokes → right-click → Recognize text → inserts as TextElement (printed text)
 
 ### Per-Tool Properties (Side Panel)
 | Property | Tools |
@@ -81,10 +90,12 @@ src/paparaz/
         tray.py                  # System tray icon + menu
         overlay.py               # Flameshot-style region selector
         editor.py                # Main editor window
-        canvas.py                # Annotation canvas (zoom, pan, render)
-        toolbar.py               # Circular purple button toolbar
-        side_panel.py            # Per-tool settings + property inspector
+        canvas.py                # Annotation canvas (zoom, pan, render, context menu)
+        toolbar.py               # Circular purple button toolbar (flow layout)
+        side_panel.py            # Per-tool settings + property inspector (pin/auto/hidden)
         icons.py                 # 32 SVG Material Design icons
+        app_theme.py             # 5 built-in QSS themes (dark/midnight/ocean/forest/warm)
+        ocr.py                   # Windows OCR via winrt (threading bridge, result dialog)
     tools/
         base.py                  # BaseTool with hover/double-click
         select.py                # Select, move, resize, double-click edit

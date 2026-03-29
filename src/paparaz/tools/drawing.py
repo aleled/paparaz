@@ -1,11 +1,11 @@
-"""Drawing tools: Pen, Brush, Line, Arrow, Rectangle, Ellipse."""
+"""Drawing tools: Pen, Brush, Highlight, Line, Arrow, Rectangle, Ellipse."""
 
 from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QMouseEvent
 from paparaz.tools.base import BaseTool, ToolType
 from paparaz.core.history import Command
 from paparaz.core.elements import (
-    PenElement, BrushElement, LineElement, ArrowElement,
+    PenElement, BrushElement, HighlightElement, LineElement, ArrowElement,
     RectElement, EllipseElement, ElementStyle,
 )
 
@@ -31,6 +31,44 @@ class PenTool(BaseTool):
         if self._current and len(self._current.points) >= 2:
             elem = self._current
             self.canvas.add_element(elem)
+        self._current = None
+        self.canvas.set_preview(None)
+
+
+class HighlightTool(BaseTool):
+    """Wide semi-transparent flat-cap marker strokes."""
+    tool_type = ToolType.HIGHLIGHT
+
+    # Default style values applied when no saved properties exist
+    DEFAULT_COLOR = "#A0FFFF00"   # 63% opaque yellow
+    DEFAULT_WIDTH = 20
+
+    def __init__(self, canvas):
+        super().__init__(canvas)
+        self._current: HighlightElement | None = None
+
+    def on_activate(self):
+        # Seed canvas state with highlight defaults only if nothing saved
+        if not getattr(self.canvas, "_highlight_defaults_set", False):
+            if self.canvas._fg_color in ("#FF0000", "#ff0000"):  # untouched default
+                self.canvas._fg_color = self.DEFAULT_COLOR
+            if self.canvas._line_width <= 3.0:
+                self.canvas._line_width = float(self.DEFAULT_WIDTH)
+            self.canvas._highlight_defaults_set = True
+
+    def on_press(self, pos: QPointF, event: QMouseEvent):
+        style = self.canvas.current_style()
+        self._current = HighlightElement(style)
+        self._current.add_point(pos)
+
+    def on_move(self, pos: QPointF, event: QMouseEvent):
+        if self._current:
+            self._current.add_point(pos)
+            self.canvas.set_preview(self._current)
+
+    def on_release(self, pos: QPointF, event: QMouseEvent):
+        if self._current and len(self._current.points) >= 2:
+            self.canvas.add_element(self._current)
         self._current = None
         self.canvas.set_preview(None)
 
@@ -116,7 +154,7 @@ class RectangleTool(BaseTool):
     def on_press(self, pos: QPointF, event: QMouseEvent):
         style = self.canvas.current_style()
         self._start = pos
-        self._current = RectElement(QRectF(pos, pos), False, style)
+        self._current = RectElement(QRectF(pos, pos), getattr(self.canvas, "_filled", False), style)
 
     def on_move(self, pos: QPointF, event: QMouseEvent):
         if self._current and self._start:
@@ -152,7 +190,7 @@ class EllipseTool(BaseTool):
     def on_press(self, pos: QPointF, event: QMouseEvent):
         style = self.canvas.current_style()
         self._start = pos
-        self._current = EllipseElement(QRectF(pos, pos), False, style)
+        self._current = EllipseElement(QRectF(pos, pos), getattr(self.canvas, "_filled", False), style)
 
     def on_move(self, pos: QPointF, event: QMouseEvent):
         if self._current and self._start:

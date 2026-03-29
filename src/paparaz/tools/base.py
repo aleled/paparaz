@@ -14,6 +14,7 @@ class ToolType(Enum):
     SELECT = auto()
     PEN = auto()
     BRUSH = auto()
+    HIGHLIGHT = auto()
     LINE = auto()
     ARROW = auto()
     RECTANGLE = auto()
@@ -24,6 +25,8 @@ class ToolType(Enum):
     ERASER = auto()
     MASQUERADE = auto()
     STAMP = auto()
+    CROP = auto()
+    SLICE = auto()
 
 
 class BaseTool:

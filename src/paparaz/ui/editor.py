@@ -1,13 +1,13 @@
-"""Main editor window - canvas, toolbar, side panel, z-order, pin, save-to-recent."""
+"""Frameless aero-style editor - canvas with floating toolbar, no window chrome."""
 
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QMainWindow, QScrollArea, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QFileDialog, QStatusBar, QApplication,
+    QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QFileDialog, QApplication,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, Signal, QPoint, QRectF
+from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QPainter, QColor
 
 from paparaz.ui.canvas import AnnotationCanvas
 from paparaz.ui.toolbar import FlameshotToolbar
@@ -18,90 +18,74 @@ from paparaz.tools.drawing import (
     PenTool, BrushTool, LineTool, ArrowTool, RectangleTool, EllipseTool,
 )
 from paparaz.tools.special import (
-    TextTool, NumberingTool, EraserTool, MasqueradeTool, FillTool,
+    TextTool, NumberingTool, EraserTool, MasqueradeTool, FillTool, StampTool,
 )
 from paparaz.core.export import save_png, save_jpg, save_svg, copy_to_clipboard
 from paparaz.core.elements import (
     NumberElement, AnnotationElement, TextElement,
-    RectElement, EllipseElement, MaskElement, NumberElement as NumElem,
+    RectElement, EllipseElement, MaskElement, NumberElement as NumElem, StampElement,
 )
 
-EDITOR_STYLE = """
-QMainWindow { background: #0d0d1a; }
-QScrollArea { background: #1a1a2e; border: none; }
-QStatusBar {
-    background: #1a1a2e; color: #888; font-size: 11px;
-    border-top: 1px solid #333; padding: 2px 8px;
-}
-"""
 
-
-class EditorWindow(QMainWindow):
-    """Main annotation editor window with Flameshot-style UI."""
+class EditorWindow(QWidget):
+    """Frameless aero-style editor - just canvas + floating toolbar + side panel."""
 
     closed = Signal()
-    pin_requested = Signal(QPixmap, QPixmap, list)  # rendered, background, elements
+    pin_requested = Signal(QPixmap, QPixmap, list)
 
     def __init__(self, screenshot: QPixmap, settings_manager=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("PapaRaZ")
-        self.setMinimumSize(480, 320)
-        self.setStyleSheet(EDITOR_STYLE)
         self._settings_manager = settings_manager
         self._screenshot = screenshot
+        self._drag_pos = QPoint()
 
-        central = QWidget()
-        outer_layout = QVBoxLayout(central)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.setSpacing(0)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        # Toolbar at top, centered
+        # Main layout: toolbar on top, then canvas+panel side by side
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(2)
+
+        # Toolbar row
+        toolbar_row = QHBoxLayout()
+        toolbar_row.setContentsMargins(0, 0, 0, 0)
         self._toolbar = FlameshotToolbar()
-        tc = QWidget()
-        tc.setStyleSheet("background: #0d0d1a;")
-        tc_layout = QHBoxLayout(tc)
-        tc_layout.setContentsMargins(12, 8, 12, 8)
-        tc_layout.addStretch()
-        tc_layout.addWidget(self._toolbar)
-        tc_layout.addStretch()
-        outer_layout.addWidget(tc)
+        toolbar_row.addStretch()
+        toolbar_row.addWidget(self._toolbar)
+        toolbar_row.addStretch()
+        layout.addLayout(toolbar_row)
 
-        # Body: side panel + scroll area
+        # Body: optional side panel + canvas
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(0)
+        body.setSpacing(2)
 
         self._side_panel = SidePanel()
+        self._side_panel.hide()  # Hidden by default, shown when element selected
         body.addWidget(self._side_panel)
 
-        self._scroll = QScrollArea()
-        self._scroll.setWidgetResizable(False)
-        self._scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._canvas = AnnotationCanvas(screenshot)
-        self._scroll.setWidget(self._canvas)
-        body.addWidget(self._scroll, 1)
+        body.addWidget(self._canvas, 1)
 
-        outer_layout.addLayout(body, 1)
+        layout.addLayout(body, 1)
 
-        # Status bar
-        self._status = QStatusBar()
-        self._tool_label = QLabel("Select")
-        self._zoom_label = QLabel("100%")
-        self._pos_label = QLabel("0, 0")
-        self._hint_label = QLabel("Ctrl+Enter: finalize text | Middle-click: pan | Ctrl+]: bring front | Ctrl+[: send back")
-        self._hint_label.setStyleSheet("color: #555;")
-        self._status.addWidget(self._tool_label)
-        self._status.addWidget(self._hint_label)
-        self._status.addPermanentWidget(self._pos_label)
-        self._status.addPermanentWidget(self._zoom_label)
-        outer_layout.addWidget(self._status)
-
-        self.setCentralWidget(central)
+        # Status label at bottom (minimal)
+        self._status = QLabel("V:Select  P:Pen  B:Brush  L:Line  A:Arrow  R:Rect  E:Ellipse  T:Text  N:Num  S:Stamp  X:Erase  M:Blur")
+        self._status.setStyleSheet("color: rgba(255,255,255,100); font-size: 9px; padding: 2px;")
+        self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._status)
 
         # --- Tools ---
         self._text_tool = TextTool(self._canvas)
         self._masquerade_tool = MasqueradeTool(self._canvas)
         self._numbering_tool = NumberingTool(self._canvas)
+        self._stamp_tool = StampTool(self._canvas)
         self._tools = {
             ToolType.SELECT: SelectTool(self._canvas),
             ToolType.PEN: PenTool(self._canvas),
@@ -115,6 +99,7 @@ class EditorWindow(QMainWindow):
             ToolType.ERASER: EraserTool(self._canvas),
             ToolType.MASQUERADE: self._masquerade_tool,
             ToolType.FILL: FillTool(self._canvas),
+            ToolType.STAMP: self._stamp_tool,
         }
 
         # --- Toolbar signals ---
@@ -148,8 +133,10 @@ class EditorWindow(QMainWindow):
         self._side_panel.pixel_size_changed.connect(self._on_pixel_size_changed)
         self._side_panel.number_size_changed.connect(self._on_number_size_changed)
         self._side_panel.number_text_color_changed.connect(self._on_number_text_color_changed)
+        self._side_panel.stamp_selected.connect(self._on_stamp_selected)
+        self._side_panel.stamp_size_changed.connect(self._on_stamp_size_changed)
 
-        # Text tool signals - update tool state AND selected element
+        # Text signals -> update tool + selected element
         self._side_panel.text_bold_changed.connect(self._on_text_bold)
         self._side_panel.text_italic_changed.connect(self._on_text_italic)
         self._side_panel.text_underline_changed.connect(self._on_text_underline)
@@ -162,15 +149,33 @@ class EditorWindow(QMainWindow):
         # Canvas signals
         self._canvas.element_selected.connect(self._on_element_selected)
         self._canvas.request_text_edit.connect(self._on_text_edit_request)
-        self._canvas.tool_changed.connect(
-            lambda tt: self._tool_label.setText(tt.name.capitalize())
-        )
-        self._canvas.zoom_changed.connect(self._on_zoom_changed)
-        self._canvas.setMouseTracking(True)
 
         self._setup_shortcuts()
         self._on_tool_selected(ToolType.SELECT)
         NumberElement.reset_counter()
+
+    def paintEvent(self, event):
+        """Draw semi-transparent dark background behind canvas."""
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setBrush(QColor(10, 10, 20, 220))
+        p.setPen(QColor(116, 0, 150, 150))
+        p.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 8, 8)
+        p.end()
+
+    # --- Window drag (since frameless) ---
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Only drag from toolbar area (top 40px)
+            if event.position().y() < 40:
+                self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton and self._drag_pos and event.position().y() < 60:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(event)
 
     # --- Tool selection ---
 
@@ -181,145 +186,129 @@ class EditorWindow(QMainWindow):
             self._toolbar.set_active_tool(tool_type)
             if not self._canvas.selected_element:
                 self._side_panel.update_for_tool(tool_type)
-            self._tool_label.setText(tool_type.name.capitalize())
 
-    # --- Element selection ---
+    # --- Element selection -> show/hide side panel ---
 
     def _on_element_selected(self, element):
         if element is not None:
             self._side_panel.load_element_properties(element)
+            self._side_panel.show()
         else:
             self._side_panel.clear_element_properties()
+            self._side_panel.hide()
 
     def _on_text_edit_request(self, element):
         if isinstance(element, TextElement):
             self._on_tool_selected(ToolType.TEXT)
             self._text_tool.start_editing(element)
             self._canvas.select_element(None)
-            self._status.showMessage("Editing text - Ctrl+Enter to finish", 3000)
 
     # --- Property handlers ---
 
-    def _on_filled_toggled(self, filled: bool):
+    def _on_filled_toggled(self, filled):
         elem = self._canvas.selected_element
         if isinstance(elem, (RectElement, EllipseElement)):
             elem.filled = filled
             self._canvas.update()
 
-    def _on_pixel_size_changed(self, size: int):
+    def _on_pixel_size_changed(self, size):
         self._masquerade_tool.pixel_size = size
         elem = self._canvas.selected_element
         if isinstance(elem, MaskElement):
             elem.pixel_size = size
             self._canvas.update()
 
-    def _on_number_size_changed(self, size: float):
+    def _on_number_size_changed(self, size):
         self._numbering_tool.marker_size = size
         elem = self._canvas.selected_element
         if isinstance(elem, NumElem):
             elem.size = size
             self._canvas.update()
 
-    def _on_number_text_color_changed(self, color: str):
+    def _on_number_text_color_changed(self, color):
         self._numbering_tool.text_color = color
         elem = self._canvas.selected_element
         if isinstance(elem, NumElem):
             elem.text_color = color
             self._canvas.update()
 
-    # --- Text property handlers: update tool + selected element ---
-
-    def _on_text_bold(self, enabled: bool):
-        self._text_tool.set_bold(enabled)
-        elem = self._canvas.selected_element
-        if isinstance(elem, TextElement):
-            elem.bold = enabled
+    def _on_stamp_selected(self, stamp_id):
+        self._stamp_tool.stamp_id = stamp_id
+        e = self._canvas.selected_element
+        if isinstance(e, StampElement):
+            e.stamp_id = stamp_id
             self._canvas.update()
 
-    def _on_text_italic(self, enabled: bool):
-        self._text_tool.set_italic(enabled)
-        elem = self._canvas.selected_element
-        if isinstance(elem, TextElement):
-            elem.italic = enabled
+    def _on_stamp_size_changed(self, size):
+        self._stamp_tool.stamp_size = size
+        e = self._canvas.selected_element
+        if isinstance(e, StampElement):
+            cx, cy = e.rect.center().x(), e.rect.center().y()
+            e.size = size
+            e.rect = QRectF(cx - size / 2, cy - size / 2, size, size)
             self._canvas.update()
 
-    def _on_text_underline(self, enabled: bool):
-        self._text_tool.set_underline(enabled)
-        elem = self._canvas.selected_element
-        if isinstance(elem, TextElement):
-            elem.underline = enabled
-            self._canvas.update()
+    def _on_text_bold(self, v):
+        self._text_tool.set_bold(v)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.bold = v; self._canvas.update()
 
-    def _on_strikethrough(self, enabled: bool):
-        self._text_tool.strikethrough = enabled
+    def _on_text_italic(self, v):
+        self._text_tool.set_italic(v)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.italic = v; self._canvas.update()
+
+    def _on_text_underline(self, v):
+        self._text_tool.set_underline(v)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.underline = v; self._canvas.update()
+
+    def _on_strikethrough(self, v):
+        self._text_tool.strikethrough = v
         if self._text_tool._active_text:
-            self._text_tool._active_text.strikethrough = enabled
+            self._text_tool._active_text.strikethrough = v
             self._canvas.set_preview(self._text_tool._active_text)
-        elem = self._canvas.selected_element
-        if isinstance(elem, TextElement):
-            elem.strikethrough = enabled
-            self._canvas.update()
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.strikethrough = v; self._canvas.update()
 
-    def _on_text_alignment(self, align: str):
+    def _on_text_alignment(self, align):
         self._text_tool.set_alignment(align)
-        elem = self._canvas.selected_element
-        if isinstance(elem, TextElement):
-            from PySide6.QtCore import Qt
-            mapping = {
-                "left": Qt.AlignmentFlag.AlignLeft,
-                "center": Qt.AlignmentFlag.AlignCenter,
-                "right": Qt.AlignmentFlag.AlignRight,
-            }
-            elem.alignment = mapping.get(align, Qt.AlignmentFlag.AlignLeft)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement):
+            m = {"left": Qt.AlignmentFlag.AlignLeft, "center": Qt.AlignmentFlag.AlignCenter, "right": Qt.AlignmentFlag.AlignRight}
+            e.alignment = m.get(align, Qt.AlignmentFlag.AlignLeft)
             self._canvas.update()
 
-    def _on_text_direction(self, direction: str):
-        self._text_tool.set_direction(direction)
-        elem = self._canvas.selected_element
-        if isinstance(elem, TextElement):
-            from PySide6.QtCore import Qt
-            elem.direction = (
-                Qt.LayoutDirection.RightToLeft if direction == "rtl"
-                else Qt.LayoutDirection.LeftToRight
-            )
+    def _on_text_direction(self, d):
+        self._text_tool.set_direction(d)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement):
+            e.direction = Qt.LayoutDirection.RightToLeft if d == "rtl" else Qt.LayoutDirection.LeftToRight
             self._canvas.update()
 
-    def _on_text_bg_enabled(self, enabled: bool):
-        self._text_tool.set_bg_enabled(enabled)
-        elem = self._canvas.selected_element
-        if isinstance(elem, TextElement):
-            elem.bg_enabled = enabled
-            self._canvas.update()
+    def _on_text_bg_enabled(self, v):
+        self._text_tool.set_bg_enabled(v)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.bg_enabled = v; self._canvas.update()
 
-    def _on_text_bg_color(self, color: str):
-        self._text_tool.set_bg_color(color)
-        elem = self._canvas.selected_element
-        if isinstance(elem, TextElement):
-            elem.bg_color = color
-            self._canvas.update()
-
-    def _on_zoom_changed(self, zoom: float):
-        self._zoom_label.setText(f"{int(zoom * 100)}%")
+    def _on_text_bg_color(self, c):
+        self._text_tool.set_bg_color(c)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.bg_color = c; self._canvas.update()
 
     # --- Shortcuts ---
 
     def _setup_shortcuts(self):
-        shortcuts = {
+        keys = {
             "Ctrl+Z": self._canvas.history.undo,
             "Ctrl+Y": self._canvas.history.redo,
             "Ctrl+Shift+Z": self._canvas.history.redo,
             "Ctrl+S": self._save_as,
-            "Ctrl+Shift+S": self._save_as,
             "Ctrl+C": self._copy_to_clipboard,
             "Ctrl+V": self._paste,
-            # Z-order
             "Ctrl+]": self._canvas.bring_to_front,
             "Ctrl+[": self._canvas.send_to_back,
-            "Ctrl+Shift+]": self._canvas.move_up,
-            "Ctrl+Shift+[": self._canvas.move_down,
-            # Pin
             "Ctrl+P": self._pin_current,
-            # Tools
             "V": lambda: self._on_tool_selected(ToolType.SELECT),
             "P": lambda: self._on_tool_selected(ToolType.PEN),
             "B": lambda: self._on_tool_selected(ToolType.BRUSH),
@@ -331,17 +320,16 @@ class EditorWindow(QMainWindow):
             "N": lambda: self._on_tool_selected(ToolType.NUMBERING),
             "X": lambda: self._on_tool_selected(ToolType.ERASER),
             "M": lambda: self._on_tool_selected(ToolType.MASQUERADE),
-            # Zoom
+            "S": lambda: self._on_tool_selected(ToolType.STAMP),
             "Ctrl+=": lambda: self._canvas.set_zoom(self._canvas.zoom * 1.25),
             "Ctrl+-": lambda: self._canvas.set_zoom(self._canvas.zoom * 0.8),
             "Ctrl+0": lambda: self._canvas.set_zoom(1.0),
         }
-        for key, callback in shortcuts.items():
-            shortcut = QShortcut(QKeySequence(key), self)
-            shortcut.activated.connect(callback)
-
+        for key, cb in keys.items():
+            s = QShortcut(QKeySequence(key), self)
+            s.activated.connect(cb)
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
-        esc.activated.connect(lambda: self._on_tool_selected(ToolType.SELECT))
+        esc.activated.connect(self.close)
 
     # --- Save / Copy / Paste / Pin ---
 
@@ -350,40 +338,29 @@ class EditorWindow(QMainWindow):
         if self._settings_manager:
             save_dir = self._settings_manager.settings.save_directory
         default_path = Path(save_dir) if save_dir else Path.home()
-
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Capture",
-            str(default_path / "capture.png"),
-            "PNG (*.png);;JPEG (*.jpg *.jpeg);;SVG (*.svg);;All Files (*)",
+            self, "Save", str(default_path / "capture.png"),
+            "PNG (*.png);;JPEG (*.jpg);;SVG (*.svg);;All (*)",
         )
         if not path:
             return
-        pixmap = self._canvas.render_to_pixmap()
+        pix = self._canvas.render_to_pixmap()
         if path.lower().endswith(".svg"):
             save_svg(self._canvas._background, path, self._canvas.paint_annotations)
         elif path.lower().endswith((".jpg", ".jpeg")):
-            quality = 90
-            if self._settings_manager:
-                quality = self._settings_manager.settings.jpg_quality
-            save_jpg(pixmap, path, quality)
+            q = self._settings_manager.settings.jpg_quality if self._settings_manager else 90
+            save_jpg(pix, path, q)
         else:
-            save_png(pixmap, path)
-
-        # Add to recent captures
+            save_png(pix, path)
         if self._settings_manager:
             self._settings_manager.add_recent(path)
 
-        self._status.showMessage(f"Saved to {path}", 3000)
-
     def _copy_to_clipboard(self):
-        pixmap = self._canvas.render_to_pixmap()
-        copy_to_clipboard(pixmap)
-        self._status.showMessage("Copied to clipboard", 2000)
+        copy_to_clipboard(self._canvas.render_to_pixmap())
 
     def _paste(self):
         if self._canvas.paste_from_clipboard():
             self._on_tool_selected(ToolType.SELECT)
-            self._status.showMessage("Pasted image from clipboard", 2000)
 
     def _pin_current(self):
         import copy
@@ -391,7 +368,6 @@ class EditorWindow(QMainWindow):
         background = self._canvas._background.copy()
         elements = copy.copy(self._canvas.elements)
         self.pin_requested.emit(rendered, background, elements)
-        self._status.showMessage("Pinned to screen", 2000)
 
     def closeEvent(self, event):
         self.closed.emit()

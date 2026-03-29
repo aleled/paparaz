@@ -29,6 +29,7 @@ TOOL_DEFS = [
     (ToolType.ERASER, "eraser", "Eraser (X)"),
     (ToolType.MASQUERADE, "blur", "Blur (M)"),
     (ToolType.FILL, "fill", "Fill (F)"),
+    (ToolType.STAMP, "star", "Stamp (S)"),
 ]
 
 ACTION_DEFS = [

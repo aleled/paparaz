@@ -23,6 +23,7 @@ class ElementType(Enum):
     NUMBER = auto()
     MASK = auto()
     IMAGE = auto()
+    STAMP = auto()
 
 
 # Line cap/join constants for UI
@@ -757,5 +758,50 @@ class ImageElement(AnnotationElement):
 
     def to_dict(self) -> dict:
         d = super().to_dict()
+        d["rect"] = (self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
+        return d
+
+
+class StampElement(AnnotationElement):
+    """Predefined stamp/icon annotation (checkmark, X, OK, etc.)."""
+
+    def __init__(self, stamp_id: str = "check", position: QPointF = QPointF(),
+                 size: float = 48, style: Optional[ElementStyle] = None):
+        super().__init__(ElementType.STAMP, style)
+        self.stamp_id = stamp_id
+        self.size = size
+        self.rect = QRectF(position.x() - size / 2, position.y() - size / 2, size, size)
+        self._renderer = None
+
+    def bounding_rect(self) -> QRectF:
+        return self.rect.normalized()
+
+    def contains_point(self, point: QPointF) -> bool:
+        return self.rect.normalized().contains(point)
+
+    def paint(self, painter: QPainter):
+        from paparaz.ui.stamps import get_stamp_renderer
+        r = self.rect.normalized()
+        if self.style.shadow.enabled:
+            painter.save()
+            painter.translate(self.style.shadow.offset_x, self.style.shadow.offset_y)
+            painter.setOpacity(painter.opacity() * 0.3)
+            renderer = get_stamp_renderer(self.stamp_id)
+            if renderer:
+                renderer.render(painter, r)
+            painter.restore()
+        renderer = get_stamp_renderer(self.stamp_id)
+        if renderer:
+            renderer.render(painter, r)
+
+    def move_by(self, dx: float, dy: float):
+        self.rect = QRectF(
+            self.rect.x() + dx, self.rect.y() + dy,
+            self.rect.width(), self.rect.height(),
+        )
+
+    def to_dict(self) -> dict:
+        d = super().to_dict()
+        d["stamp_id"] = self.stamp_id
         d["rect"] = (self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
         return d

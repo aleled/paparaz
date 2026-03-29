@@ -23,6 +23,7 @@ class ToolType(Enum):
     FILL = auto()
     ERASER = auto()
     MASQUERADE = auto()
+    STAMP = auto()
 
 
 class BaseTool:

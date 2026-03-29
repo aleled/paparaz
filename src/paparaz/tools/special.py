@@ -1,10 +1,10 @@
-"""Special tools: Text, Numbering, Eraser, Masquerade, Fill - with hover previews."""
+"""Special tools: Text, Numbering, Eraser, Masquerade, Fill, Stamp - with hover previews."""
 
 from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QMouseEvent, QKeyEvent, QPainter, QColor, QPen, QFont, QFontMetrics
 from paparaz.tools.base import BaseTool, ToolType
 from paparaz.core.elements import (
-    TextElement, NumberElement, MaskElement, ElementStyle,
+    TextElement, NumberElement, MaskElement, StampElement, ElementStyle,
 )
 
 
@@ -324,7 +324,6 @@ class FillTool(BaseTool):
             self.canvas.update()
 
     def paint_hover(self, painter: QPainter):
-        """Highlight the shape that would be filled (color tint preview)."""
         if not self._hovered_element:
             return
         rect = self._hovered_element.bounding_rect()
@@ -337,3 +336,33 @@ class FillTool(BaseTool):
     def on_deactivate(self):
         self._hovered_element = None
         super().on_deactivate()
+
+
+class StampTool(BaseTool):
+    """Place predefined stamp icons (check, cross, OK, etc.) on the canvas."""
+
+    tool_type = ToolType.STAMP
+    cursor = Qt.CursorShape.CrossCursor
+
+    def __init__(self, canvas):
+        super().__init__(canvas)
+        self.stamp_id = "check"
+        self.stamp_size = 48.0
+
+    def on_press(self, pos: QPointF, event: QMouseEvent):
+        style = self.canvas.current_style()
+        elem = StampElement(self.stamp_id, pos, self.stamp_size, style)
+        self.canvas.add_element(elem)
+
+    def paint_hover(self, painter: QPainter):
+        """Show ghost stamp at cursor before clicking."""
+        if not self._hover_pos:
+            return
+        from paparaz.ui.stamps import get_stamp_renderer
+        s = self.stamp_size
+        r = QRectF(self._hover_pos.x() - s / 2, self._hover_pos.y() - s / 2, s, s)
+        painter.setOpacity(0.45)
+        renderer = get_stamp_renderer(self.stamp_id)
+        if renderer:
+            renderer.render(painter, r)
+        painter.setOpacity(1.0)

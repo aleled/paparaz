@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QMouseEvent, QKeyEvent, QPainter, QColor, QPen
 from paparaz.tools.base import BaseTool, ToolType
 from paparaz.core.elements import (
-    AnnotationElement, TextElement, NumberElement,
+    AnnotationElement, TextElement, NumberElement, StampElement,
     PenElement, BrushElement, LineElement, ArrowElement,
     RectElement, EllipseElement, MaskElement, ImageElement,
 )

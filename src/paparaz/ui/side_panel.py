@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QPainter, QPixmap, QIcon
 
 from paparaz.tools.base import ToolType
 from paparaz.ui.icons import get_icon
@@ -70,18 +70,19 @@ QToolButton:checked { background: #740096; border-color: #740096; }
 """
 
 TOOL_SECTIONS = {
-    ToolType.SELECT:     {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": False, "mask": False, "number": False},
-    ToolType.PEN:        {"stroke": True,  "line_style": True,  "fill": False, "effects": True, "text": False, "mask": False, "number": False},
-    ToolType.BRUSH:      {"stroke": True,  "line_style": False, "fill": False, "effects": True, "text": False, "mask": False, "number": False},
-    ToolType.LINE:       {"stroke": True,  "line_style": True,  "fill": False, "effects": True, "text": False, "mask": False, "number": False},
-    ToolType.ARROW:      {"stroke": True,  "line_style": True,  "fill": False, "effects": True, "text": False, "mask": False, "number": False},
-    ToolType.RECTANGLE:  {"stroke": True,  "line_style": True,  "fill": True,  "effects": True, "text": False, "mask": False, "number": False},
-    ToolType.ELLIPSE:    {"stroke": True,  "line_style": True,  "fill": True,  "effects": True, "text": False, "mask": False, "number": False},
-    ToolType.TEXT:        {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": True,  "mask": False, "number": False},
-    ToolType.NUMBERING:  {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": False, "mask": False, "number": True},
-    ToolType.ERASER:     {"stroke": False, "line_style": False, "fill": False, "effects": False,"text": False, "mask": False, "number": False},
-    ToolType.MASQUERADE: {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": False, "mask": True,  "number": False},
-    ToolType.FILL:       {"stroke": False, "line_style": False, "fill": False, "effects": False,"text": False, "mask": False, "number": False},
+    ToolType.SELECT:     {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.PEN:        {"stroke": True,  "line_style": True,  "fill": False, "effects": True, "text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.BRUSH:      {"stroke": True,  "line_style": False, "fill": False, "effects": True, "text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.LINE:       {"stroke": True,  "line_style": True,  "fill": False, "effects": True, "text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.ARROW:      {"stroke": True,  "line_style": True,  "fill": False, "effects": True, "text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.RECTANGLE:  {"stroke": True,  "line_style": True,  "fill": True,  "effects": True, "text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.ELLIPSE:    {"stroke": True,  "line_style": True,  "fill": True,  "effects": True, "text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.TEXT:        {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": True,  "mask": False, "number": False, "stamp": False},
+    ToolType.NUMBERING:  {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": False, "mask": False, "number": True,  "stamp": False},
+    ToolType.ERASER:     {"stroke": False, "line_style": False, "fill": False, "effects": False,"text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.MASQUERADE: {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": False, "mask": True,  "number": False, "stamp": False},
+    ToolType.FILL:       {"stroke": False, "line_style": False, "fill": False, "effects": False,"text": False, "mask": False, "number": False, "stamp": False},
+    ToolType.STAMP:      {"stroke": False, "line_style": False, "fill": False, "effects": True, "text": False, "mask": False, "number": False, "stamp": True},
 }
 
 
@@ -106,6 +107,8 @@ class SidePanel(QWidget):
     pixel_size_changed = Signal(int)
     number_size_changed = Signal(float)
     number_text_color_changed = Signal(str)
+    stamp_selected = Signal(str)
+    stamp_size_changed = Signal(float)
     text_bold_changed = Signal(bool)
     text_italic_changed = Signal(bool)
     text_underline_changed = Signal(bool)
@@ -302,6 +305,51 @@ class SidePanel(QWidget):
         self._number_widget = self._wrap_layout(nl)
         self._layout.addWidget(self._number_widget)
 
+        # --- STAMP ---
+        self._stamp_title = self._section_title("STAMP")
+        self._layout.addWidget(self._stamp_title)
+        sl = QVBoxLayout()
+        sl.setSpacing(2)
+        # Stamp picker grid (flow layout with small icon buttons)
+        from paparaz.ui.stamps import STAMPS, get_stamp_renderer
+        self._stamp_group = QButtonGroup(self)
+        self._stamp_group.setExclusive(True)
+        stamp_row = None
+        for i, (sid, sdata) in enumerate(STAMPS.items()):
+            if i % 4 == 0:
+                stamp_row = QHBoxLayout()
+                stamp_row.setSpacing(2)
+                sl.addLayout(stamp_row)
+            btn = QToolButton()
+            btn.setToolTip(sdata["label"])
+            btn.setCheckable(True)
+            btn.setFixedSize(32, 32)
+            # Render stamp to icon
+            pix = QPixmap(28, 28)
+            pix.fill(Qt.GlobalColor.transparent)
+            rp = QPainter(pix)
+            r = get_stamp_renderer(sid)
+            if r:
+                r.render(rp)
+            rp.end()
+            btn.setIcon(QIcon(pix))
+            btn.setIconSize(pix.size())
+            btn.setStyleSheet("QToolButton{background:#2a2a3e;border:1px solid #3a3a4e;border-radius:4px;min-width:32px;min-height:32px;max-width:32px;max-height:32px;}QToolButton:hover{background:#3a3a4e;}QToolButton:checked{background:#740096;border-color:#740096;}")
+            self._stamp_group.addButton(btn)
+            stamp_row.addWidget(btn)
+            btn.toggled.connect(lambda checked, s=sid: self._emit_if_not_loading(self.stamp_selected, s) if checked else None)
+            if i == 0:
+                btn.setChecked(True)
+        # Pad last row
+        if stamp_row:
+            stamp_row.addStretch()
+        # Stamp size
+        self._stamp_size_slider, self._stamp_size_label, ss_w = self._make_slider_row("Size", 24, 128, 48, "px")
+        self._stamp_size_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.stamp_size_changed, float(v)))
+        sl.addWidget(ss_w)
+        self._stamp_widget = self._wrap_layout(sl)
+        self._layout.addWidget(self._stamp_widget)
+
         # --- EFFECTS ---
         self._effects_title = self._section_title("EFFECTS")
         self._layout.addWidget(self._effects_title)
@@ -430,6 +478,8 @@ class SidePanel(QWidget):
         self._mask_widget.setVisible(s.get("mask", False))
         self._number_title.setVisible(s.get("number", False))
         self._number_widget.setVisible(s.get("number", False))
+        self._stamp_title.setVisible(s.get("stamp", False))
+        self._stamp_widget.setVisible(s.get("stamp", False))
         self._effects_title.setVisible(s.get("effects", False))
         self._effects_widget.setVisible(s.get("effects", False))
 
@@ -500,6 +550,7 @@ class SidePanel(QWidget):
                 ElementType.RECTANGLE: ToolType.RECTANGLE, ElementType.ELLIPSE: ToolType.ELLIPSE,
                 ElementType.TEXT: ToolType.TEXT, ElementType.NUMBER: ToolType.NUMBERING,
                 ElementType.MASK: ToolType.MASQUERADE, ElementType.IMAGE: ToolType.SELECT,
+                ElementType.STAMP: ToolType.STAMP,
             }
             self.update_for_tool(etype_map.get(element.element_type, self._current_tool))
         finally:

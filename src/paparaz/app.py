@@ -67,11 +67,7 @@ class PapaRazApp(QObject):
 
         self._full_capture = capture_all_screens()
 
-        vx, vy, vw, vh = get_virtual_screen_geometry()
-        self._overlay = RegionSelector(
-            self._full_capture,
-            screen_offset=QPoint(vx, vy),
-        )
+        self._overlay = RegionSelector(self._full_capture)
         self._overlay.region_selected.connect(self._on_region_selected)
         self._overlay.selection_cancelled.connect(self._on_selection_cancelled)
         self._overlay.showFullScreen()
@@ -82,12 +78,27 @@ class PapaRazApp(QObject):
             self._overlay = None
 
         if self._full_capture:
-            vx, vy, _, _ = get_virtual_screen_geometry()
-            cropped = capture_region(
-                self._full_capture,
-                rect.x() - vx, rect.y() - vy,
-                rect.width(), rect.height(),
-            )
+            # The overlay works in Qt logical pixels. The capture is in physical pixels.
+            # Compute the virtual desktop in both coordinate systems to find the scale factor.
+            virtual_rect = QRect()
+            for screen in QApplication.screens():
+                virtual_rect = virtual_rect.united(screen.geometry())
+
+            logical_w = virtual_rect.width()
+            logical_h = virtual_rect.height()
+            phys_w = self._full_capture.width()
+            phys_h = self._full_capture.height()
+
+            # Scale selection from logical to physical pixel coords
+            sx = phys_w / logical_w if logical_w > 0 else 1.0
+            sy = phys_h / logical_h if logical_h > 0 else 1.0
+
+            px = int((rect.x() - virtual_rect.x()) * sx)
+            py = int((rect.y() - virtual_rect.y()) * sy)
+            pw = int(rect.width() * sx)
+            ph = int(rect.height() * sy)
+
+            cropped = capture_region(self._full_capture, px, py, pw, ph)
             self._open_editor(cropped)
 
     def _on_selection_cancelled(self):

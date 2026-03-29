@@ -111,7 +111,24 @@ class PapaRazApp(QObject):
         if elements:
             self._editor._canvas.elements = elements
             self._editor._canvas.update()
-        self._editor.showMaximized()
+
+        # Size window to fit capture + UI chrome, capped to screen
+        screen = QApplication.primaryScreen()
+        if screen:
+            avail = screen.availableGeometry()
+            # Add space for side panel (~186px), toolbar (~60px), status bar (~25px), borders
+            chrome_w = 186 + 20
+            chrome_h = 60 + 25 + 20
+            win_w = min(pixmap.width() + chrome_w, avail.width())
+            win_h = min(pixmap.height() + chrome_h, avail.height())
+            # Don't go smaller than minimumSize
+            win_w = max(win_w, 480)
+            win_h = max(win_h, 320)
+            # Center on screen
+            x = avail.x() + (avail.width() - win_w) // 2
+            y = avail.y() + (avail.height() - win_h) // 2
+            self._editor.setGeometry(x, y, win_w, win_h)
+        self._editor.show()
 
     def _on_editor_closed(self):
         self._editor = None

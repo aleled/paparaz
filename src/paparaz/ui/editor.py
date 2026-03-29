@@ -45,7 +45,7 @@ class EditorWindow(QMainWindow):
     def __init__(self, screenshot: QPixmap, settings_manager=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PapaRaZ")
-        self.setMinimumSize(900, 650)
+        self.setMinimumSize(480, 320)
         self.setStyleSheet(EDITOR_STYLE)
         self._settings_manager = settings_manager
         self._screenshot = screenshot

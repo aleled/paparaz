@@ -1,4 +1,4 @@
-"""Main application controller - orchestrates tray, hotkey, capture, and editor."""
+"""Main application controller - orchestrates tray, hotkey, capture, editor, pin, settings."""
 
 from PySide6.QtWidgets import QApplication, QFileDialog
 from PySide6.QtCore import QObject, QPoint, QRect, QTimer
@@ -9,6 +9,8 @@ from paparaz.core.settings import SettingsManager
 from paparaz.ui.tray import TrayIcon
 from paparaz.ui.overlay import RegionSelector
 from paparaz.ui.editor import EditorWindow
+from paparaz.ui.pin_window import PinWindow
+from paparaz.ui.settings_dialog import SettingsDialog
 from paparaz.utils.hotkey import GlobalHotkeyListener
 from paparaz.utils.monitors import get_virtual_screen_geometry
 
@@ -26,6 +28,7 @@ class PapaRazApp(QObject):
         self._overlay = None
         self._editor = None
         self._full_capture = None
+        self._pin_windows: list[PinWindow] = []
 
         # Hotkey listener
         self._hotkey_listener = GlobalHotkeyListener()
@@ -35,30 +38,35 @@ class PapaRazApp(QObject):
 
         # Connect signals
         self._tray.capture_requested.connect(self._start_capture)
+        self._tray.delay_capture_requested.connect(self._delay_capture)
         self._tray.open_image_requested.connect(self._open_image)
+        self._tray.open_recent_requested.connect(self._open_recent)
         self._tray.settings_requested.connect(self._show_settings)
         self._tray.quit_requested.connect(self._quit)
         self._hotkey_listener.hotkey_pressed.connect(self._on_hotkey)
 
     def start(self):
         self._tray.show()
-        self._tray.show_message("PapaRaZ", "Ready! Press PrintScreen to capture.")
+        self._tray.update_recent(self._settings.settings.recent_captures)
+        if self._settings.settings.show_tray_notification:
+            self._tray.show_message("PapaRaZ", "Ready! Press PrintScreen to capture.")
         self._hotkey_listener.start()
 
     def _on_hotkey(self, hk_id: int):
         if hk_id == self._capture_hk_id:
-            # Small delay to let the hotkey release
             QTimer.singleShot(150, self._start_capture)
 
+    def _delay_capture(self, seconds: int):
+        """Capture after a delay (countdown)."""
+        self._tray.show_message("PapaRaZ", f"Capturing in {seconds} seconds...")
+        QTimer.singleShot(seconds * 1000, self._start_capture)
+
     def _start_capture(self):
-        # Hide editor if open
         if self._editor:
             self._editor.hide()
 
-        # Capture all screens
         self._full_capture = capture_all_screens()
 
-        # Show region selector overlay
         vx, vy, vw, vh = get_virtual_screen_geometry()
         self._overlay = RegionSelector(
             self._full_capture,
@@ -74,7 +82,6 @@ class PapaRazApp(QObject):
             self._overlay = None
 
         if self._full_capture:
-            # Adjust rect relative to virtual screen origin
             vx, vy, _, _ = get_virtual_screen_geometry()
             cropped = capture_region(
                 self._full_capture,
@@ -89,8 +96,9 @@ class PapaRazApp(QObject):
             self._overlay = None
 
     def _open_editor(self, pixmap: QPixmap):
-        self._editor = EditorWindow(pixmap)
+        self._editor = EditorWindow(pixmap, settings_manager=self._settings)
         self._editor.closed.connect(self._on_editor_closed)
+        self._editor.pin_requested.connect(self._pin_screenshot)
         self._editor.showMaximized()
 
     def _on_editor_closed(self):
@@ -99,19 +107,35 @@ class PapaRazApp(QObject):
     def _open_image(self):
         path, _ = QFileDialog.getOpenFileName(
             None, "Open Image", "",
-            "Images (*.png *.jpg *.jpeg *.bmp *.gif);;All Files (*)",
+            "Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;All Files (*)",
         )
         if path:
             pixmap = QPixmap(path)
             if not pixmap.isNull():
                 self._open_editor(pixmap)
 
+    def _open_recent(self, path: str):
+        from pathlib import Path
+        if Path(path).exists():
+            pixmap = QPixmap(path)
+            if not pixmap.isNull():
+                self._open_editor(pixmap)
+
+    def _pin_screenshot(self, pixmap: QPixmap):
+        """Create an always-on-top floating pin of the current capture."""
+        pin = PinWindow(pixmap)
+        pin.closed.connect(lambda: self._pin_windows.remove(pin) if pin in self._pin_windows else None)
+        pin.show()
+        self._pin_windows.append(pin)
+
     def _show_settings(self):
-        # TODO: Settings dialog (Phase 5)
-        pass
+        dlg = SettingsDialog(self._settings)
+        dlg.exec()
 
     def _quit(self):
         self._hotkey_listener.stop()
+        for pin in self._pin_windows:
+            pin.close()
         if self._editor:
             self._editor.close()
         self._app.quit()

@@ -39,6 +39,9 @@ ACTION_DEFS = [
     ("save", "Save (Ctrl+S)"),
     ("copy", "Copy to clipboard (Ctrl+C)"),
     ("paste", "Paste (Ctrl+V)"),
+    ("pin", "Pin to screen (Ctrl+P)"),
+    ("bring_front", "Bring to front (Ctrl+])"),
+    ("send_back", "Send to back (Ctrl+[)"),
     ("close", "Close (Esc)"),
 ]
 
@@ -82,6 +85,9 @@ class FlameshotToolbar(QWidget):
     save_requested = Signal()
     copy_requested = Signal()
     paste_requested = Signal()
+    pin_requested = Signal()
+    bring_front_requested = Signal()
+    send_back_requested = Signal()
     close_requested = Signal()
 
     def __init__(self, parent=None):
@@ -122,6 +128,9 @@ class FlameshotToolbar(QWidget):
             "save": self.save_requested,
             "copy": self.copy_requested,
             "paste": self.paste_requested,
+            "pin": self.pin_requested,
+            "bring_front": self.bring_front_requested,
+            "send_back": self.send_back_requested,
             "close": self.close_requested,
         }
         for icon_name, tooltip in ACTION_DEFS:

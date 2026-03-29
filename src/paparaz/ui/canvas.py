@@ -54,6 +54,7 @@ class AnnotationCanvas(QWidget):
 
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAcceptDrops(True)
         self._update_size()
 
     def _update_size(self):
@@ -264,6 +265,83 @@ class AnnotationCanvas(QWidget):
             element.selected = True
         self.element_selected.emit(element)
         self.update()
+
+    # --- Z-order ---
+
+    def bring_to_front(self):
+        if self.selected_element and self.selected_element in self.elements:
+            elem = self.selected_element
+            old_idx = self.elements.index(elem)
+            def do():
+                if elem in self.elements:
+                    self.elements.remove(elem)
+                    self.elements.append(elem)
+                self.update()
+            def undo():
+                if elem in self.elements:
+                    self.elements.remove(elem)
+                    self.elements.insert(min(old_idx, len(self.elements)), elem)
+                self.update()
+            self.history.execute(Command("Bring to front", do, undo))
+
+    def send_to_back(self):
+        if self.selected_element and self.selected_element in self.elements:
+            elem = self.selected_element
+            old_idx = self.elements.index(elem)
+            def do():
+                if elem in self.elements:
+                    self.elements.remove(elem)
+                    self.elements.insert(0, elem)
+                self.update()
+            def undo():
+                if elem in self.elements:
+                    self.elements.remove(elem)
+                    self.elements.insert(min(old_idx, len(self.elements)), elem)
+                self.update()
+            self.history.execute(Command("Send to back", do, undo))
+
+    def move_up(self):
+        if self.selected_element and self.selected_element in self.elements:
+            idx = self.elements.index(self.selected_element)
+            if idx < len(self.elements) - 1:
+                self.elements[idx], self.elements[idx + 1] = self.elements[idx + 1], self.elements[idx]
+                self.update()
+
+    def move_down(self):
+        if self.selected_element and self.selected_element in self.elements:
+            idx = self.elements.index(self.selected_element)
+            if idx > 0:
+                self.elements[idx], self.elements[idx - 1] = self.elements[idx - 1], self.elements[idx]
+                self.update()
+
+    # --- Drag & drop ---
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasImage():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        mime = event.mimeData()
+        pos = self._screen_to_canvas(QPointF(event.position()))
+        if mime.hasImage():
+            img = mime.imageData()
+            if img:
+                pix = QPixmap.fromImage(img)
+                if not pix.isNull():
+                    elem = ImageElement(pix, pos)
+                    self.add_element(elem)
+                    self.select_element(elem)
+                    return
+        if mime.hasUrls():
+            for url in mime.urls():
+                path = url.toLocalFile()
+                if path and path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')):
+                    pix = QPixmap(path)
+                    if not pix.isNull():
+                        elem = ImageElement(pix, pos)
+                        self.add_element(elem)
+                        self.select_element(elem)
+                        return
 
     def set_preview(self, element: Optional[AnnotationElement]):
         self._preview_element = element

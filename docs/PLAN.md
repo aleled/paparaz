@@ -94,18 +94,20 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] 6.1 Multi-monitor aware capture (spans all screens, DPI-aware)
 - [ ] 6.2 Snap to edges/grid
 - [ ] 6.3 Copy/paste elements between captures
-- [ ] 6.4 Drag and drop image onto canvas
-- [ ] 6.5 Recent captures gallery
-- [ ] 6.6 Pin screenshot (always-on-top floating window)
+- [x] 6.4 Drag and drop image onto canvas
+- [x] 6.5 Recent captures gallery (tray submenu)
+- [x] 6.6 Pin screenshot (always-on-top floating window)
 - [ ] 6.7 Crop/resize captured region after capture
-- [ ] 6.8 Element z-order controls (bring to front, send to back)
+- [x] 6.8 Element z-order (bring to front, send to back, move up/down with undo)
+- [x] 6.9 Delay capture (3/5/10 second timer via tray menu)
+- [x] 6.10 Settings dialog (hotkeys, defaults, theme, save directory)
 
 ---
 
-## Phase 7: Packaging & Distribution
+## Phase 7: Packaging & Distribution - IN PROGRESS
 **Goal**: Installable Windows application.
 
-- [ ] 7.1 PyInstaller / Nuitka build configuration
+- [x] 7.1 PyInstaller build configuration (paparaz.spec + build.bat)
 - [ ] 7.2 Windows installer (NSIS or Inno Setup)
 - [ ] 7.3 Auto-start on login option
 - [ ] 7.4 Update checker
@@ -115,15 +117,13 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 ---
 
 ## Future Enhancements (Backlog)
-- [ ] Settings dialog (configurable hotkeys, default colors, save directory)
 - [ ] Custom color palette / recent colors
-- [ ] Eyedropper / color grab tool
+- [ ] Eyedropper / color grab tool (icon ready)
 - [ ] Layers panel (element z-ordering with drag)
 - [ ] Text outline / stroke on text
 - [ ] Curved arrows / Bezier curves
 - [ ] Stamp/emoji tool
 - [ ] Magnifier tool (zoom lens while selecting)
-- [ ] Delay capture (timer)
 - [ ] Video/GIF recording
 - [ ] Upload to cloud (Imgur, custom endpoint)
 - [ ] Plugin/extension system
@@ -137,6 +137,6 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Not started
 - [x] Completed
 
-## Current Status: Phase 5 complete, Phase 6 in progress
-**Version**: 0.5.0
+## Current Status: Phase 6 mostly complete, Phase 7 in progress
+**Version**: 0.6.0
 **Last updated**: 2026-03-29

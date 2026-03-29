@@ -1,5 +1,43 @@
 # PapaRaZ - Changelog
 
+## [0.6.0] - 2026-03-29
+
+### Phase 6: Advanced Features
+- **Element z-order**: Bring to front (Ctrl+]), Send to back (Ctrl+[), Move up (Ctrl+Shift+]), Move down (Ctrl+Shift+[) with undo support
+- **Drag & drop images**: Drop PNG/JPG/BMP/GIF/WebP from file explorer onto canvas
+- **Pin screenshot**: Always-on-top floating window (Ctrl+P), draggable, right-click to scale or close
+- **Recent captures**: Tray submenu shows last 10 saved captures, click to reopen
+- **Delay capture**: 3/5/10 second countdown via tray menu
+
+### Settings Dialog
+- Full GUI settings accessible from tray menu
+- **General tab**: Save directory, default format, JPG quality, capture delay, start on login, tray notifications
+- **Hotkeys tab**: Configure all keyboard shortcuts
+- **Tools tab**: Default foreground/background colors, line width, font family/size
+- **About tab**: Version info
+
+### Toolbar Additions
+- **Pin button** with pushpin icon
+- **Bring to front / Send to back** buttons with layering icons
+- 5 new SVG icons: pin, eyedropper, bring_front, send_back, timer
+
+### Tray Menu Enhancements
+- Delay capture submenu (3s, 5s, 10s)
+- Recent captures submenu with file names
+- Dark styled context menu
+
+### Packaging
+- PyInstaller spec file (`paparaz.spec`) for single-exe build
+- `build.bat` build script
+
+### New Files
+- `ui/pin_window.py` - Always-on-top pin window
+- `ui/settings_dialog.py` - Settings dialog with tabs
+- `paparaz.spec` - PyInstaller build config
+- `build.bat` - Build script
+
+---
+
 ## [0.5.0] - 2026-03-29
 
 ### Full Shadow Controls

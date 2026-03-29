@@ -1,4 +1,4 @@
-"""Main editor window - canvas, Flameshot toolbar, side panel with per-tool settings."""
+"""Main editor window - canvas, toolbar, side panel, z-order, pin, save-to-recent."""
 
 from pathlib import Path
 
@@ -40,12 +40,15 @@ class EditorWindow(QMainWindow):
     """Main annotation editor window with Flameshot-style UI."""
 
     closed = Signal()
+    pin_requested = Signal(QPixmap)
 
-    def __init__(self, screenshot: QPixmap, parent=None):
+    def __init__(self, screenshot: QPixmap, settings_manager=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PapaRaZ")
         self.setMinimumSize(900, 650)
         self.setStyleSheet(EDITOR_STYLE)
+        self._settings_manager = settings_manager
+        self._screenshot = screenshot
 
         central = QWidget()
         outer_layout = QVBoxLayout(central)
@@ -85,7 +88,7 @@ class EditorWindow(QMainWindow):
         self._tool_label = QLabel("Select")
         self._zoom_label = QLabel("100%")
         self._pos_label = QLabel("0, 0")
-        self._hint_label = QLabel("Ctrl+Enter to finalize text | Middle-click to pan")
+        self._hint_label = QLabel("Ctrl+Enter: finalize text | Middle-click: pan | Ctrl+]: bring front | Ctrl+[: send back")
         self._hint_label.setStyleSheet("color: #555;")
         self._status.addWidget(self._tool_label)
         self._status.addWidget(self._hint_label)
@@ -121,9 +124,12 @@ class EditorWindow(QMainWindow):
         self._toolbar.save_requested.connect(self._save_as)
         self._toolbar.copy_requested.connect(self._copy_to_clipboard)
         self._toolbar.paste_requested.connect(self._paste)
+        self._toolbar.pin_requested.connect(self._pin_current)
+        self._toolbar.bring_front_requested.connect(self._canvas.bring_to_front)
+        self._toolbar.send_back_requested.connect(self._canvas.send_to_back)
         self._toolbar.close_requested.connect(self.close)
 
-        # --- Side panel → canvas/tool signals ---
+        # --- Side panel signals ---
         self._side_panel.fg_color_changed.connect(self._canvas.set_foreground_color)
         self._side_panel.bg_color_changed.connect(self._canvas.set_background_color)
         self._side_panel.line_width_changed.connect(self._canvas.set_line_width)
@@ -138,14 +144,8 @@ class EditorWindow(QMainWindow):
         self._side_panel.cap_style_changed.connect(self._canvas.set_cap_style)
         self._side_panel.join_style_changed.connect(self._canvas.set_join_style)
         self._side_panel.dash_pattern_changed.connect(self._canvas.set_dash_pattern)
-
-        # Fill toggle
         self._side_panel.filled_toggled.connect(self._on_filled_toggled)
-
-        # Pixel size
         self._side_panel.pixel_size_changed.connect(self._on_pixel_size_changed)
-
-        # Number size + text color
         self._side_panel.number_size_changed.connect(self._on_number_size_changed)
         self._side_panel.number_text_color_changed.connect(self._on_number_text_color_changed)
 
@@ -159,7 +159,7 @@ class EditorWindow(QMainWindow):
         self._side_panel.text_bg_enabled_changed.connect(self._text_tool.set_bg_enabled)
         self._side_panel.text_bg_color_changed.connect(self._text_tool.set_bg_color)
 
-        # --- Canvas → side panel (element selection) ---
+        # Canvas signals
         self._canvas.element_selected.connect(self._on_element_selected)
         self._canvas.request_text_edit.connect(self._on_text_edit_request)
         self._canvas.tool_changed.connect(
@@ -168,10 +168,7 @@ class EditorWindow(QMainWindow):
         self._canvas.zoom_changed.connect(self._on_zoom_changed)
         self._canvas.setMouseTracking(True)
 
-        # Shortcuts
         self._setup_shortcuts()
-
-        # Default tool
         self._on_tool_selected(ToolType.SELECT)
         NumberElement.reset_counter()
 
@@ -182,12 +179,11 @@ class EditorWindow(QMainWindow):
         if tool:
             self._canvas.set_tool(tool)
             self._toolbar.set_active_tool(tool_type)
-            # Only update panel sections if no element is selected
             if not self._canvas.selected_element:
                 self._side_panel.update_for_tool(tool_type)
             self._tool_label.setText(tool_type.name.capitalize())
 
-    # --- Element selection → load properties into side panel ---
+    # --- Element selection ---
 
     def _on_element_selected(self, element):
         if element is not None:
@@ -196,14 +192,13 @@ class EditorWindow(QMainWindow):
             self._side_panel.clear_element_properties()
 
     def _on_text_edit_request(self, element):
-        """Double-click on text element: switch to text tool and re-edit it."""
         if isinstance(element, TextElement):
             self._on_tool_selected(ToolType.TEXT)
             self._text_tool.start_editing(element)
             self._canvas.select_element(None)
             self._status.showMessage("Editing text - Ctrl+Enter to finish", 3000)
 
-    # --- Property change handlers for specific element types ---
+    # --- Property handlers ---
 
     def _on_filled_toggled(self, filled: bool):
         elem = self._canvas.selected_element
@@ -212,9 +207,7 @@ class EditorWindow(QMainWindow):
             self._canvas.update()
 
     def _on_pixel_size_changed(self, size: int):
-        # Store for new masks
         self._masquerade_tool.pixel_size = size
-        # Update selected mask
         elem = self._canvas.selected_element
         if isinstance(elem, MaskElement):
             elem.pixel_size = size
@@ -239,7 +232,6 @@ class EditorWindow(QMainWindow):
         if self._text_tool._active_text:
             self._text_tool._active_text.strikethrough = enabled
             self._canvas.set_preview(self._text_tool._active_text)
-        # Also update selected text element
         elem = self._canvas.selected_element
         if isinstance(elem, TextElement):
             elem.strikethrough = enabled
@@ -259,6 +251,14 @@ class EditorWindow(QMainWindow):
             "Ctrl+Shift+S": self._save_as,
             "Ctrl+C": self._copy_to_clipboard,
             "Ctrl+V": self._paste,
+            # Z-order
+            "Ctrl+]": self._canvas.bring_to_front,
+            "Ctrl+[": self._canvas.send_to_back,
+            "Ctrl+Shift+]": self._canvas.move_up,
+            "Ctrl+Shift+[": self._canvas.move_down,
+            # Pin
+            "Ctrl+P": self._pin_current,
+            # Tools
             "V": lambda: self._on_tool_selected(ToolType.SELECT),
             "P": lambda: self._on_tool_selected(ToolType.PEN),
             "B": lambda: self._on_tool_selected(ToolType.BRUSH),
@@ -270,6 +270,7 @@ class EditorWindow(QMainWindow):
             "N": lambda: self._on_tool_selected(ToolType.NUMBERING),
             "X": lambda: self._on_tool_selected(ToolType.ERASER),
             "M": lambda: self._on_tool_selected(ToolType.MASQUERADE),
+            # Zoom
             "Ctrl+=": lambda: self._canvas.set_zoom(self._canvas.zoom * 1.25),
             "Ctrl+-": lambda: self._canvas.set_zoom(self._canvas.zoom * 0.8),
             "Ctrl+0": lambda: self._canvas.set_zoom(1.0),
@@ -281,12 +282,17 @@ class EditorWindow(QMainWindow):
         esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         esc.activated.connect(lambda: self._on_tool_selected(ToolType.SELECT))
 
-    # --- Save / Copy / Paste ---
+    # --- Save / Copy / Paste / Pin ---
 
     def _save_as(self):
+        save_dir = ""
+        if self._settings_manager:
+            save_dir = self._settings_manager.settings.save_directory
+        default_path = Path(save_dir) if save_dir else Path.home()
+
         path, _ = QFileDialog.getSaveFileName(
             self, "Save Capture",
-            str(Path.home() / "capture.png"),
+            str(default_path / "capture.png"),
             "PNG (*.png);;JPEG (*.jpg *.jpeg);;SVG (*.svg);;All Files (*)",
         )
         if not path:
@@ -295,9 +301,17 @@ class EditorWindow(QMainWindow):
         if path.lower().endswith(".svg"):
             save_svg(self._canvas._background, path, self._canvas.paint_annotations)
         elif path.lower().endswith((".jpg", ".jpeg")):
-            save_jpg(pixmap, path)
+            quality = 90
+            if self._settings_manager:
+                quality = self._settings_manager.settings.jpg_quality
+            save_jpg(pixmap, path, quality)
         else:
             save_png(pixmap, path)
+
+        # Add to recent captures
+        if self._settings_manager:
+            self._settings_manager.add_recent(path)
+
         self._status.showMessage(f"Saved to {path}", 3000)
 
     def _copy_to_clipboard(self):
@@ -309,6 +323,11 @@ class EditorWindow(QMainWindow):
         if self._canvas.paste_from_clipboard():
             self._on_tool_selected(ToolType.SELECT)
             self._status.showMessage("Pasted image from clipboard", 2000)
+
+    def _pin_current(self):
+        pixmap = self._canvas.render_to_pixmap()
+        self.pin_requested.emit(pixmap)
+        self._status.showMessage("Pinned to screen", 2000)
 
     def closeEvent(self, event):
         self.closed.emit()

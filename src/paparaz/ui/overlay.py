@@ -1,37 +1,40 @@
-"""Full-screen overlay for region selection - Flameshot-style dark overlay with selection hole.
+"""Full-screen overlay for region selection on a single monitor.
 
-Handles DPI scaling by using Qt's screen geometry (logical pixels) and scaling
-the Win32 capture (physical pixels) to match.
+Captures and overlays only the monitor the cursor is on, avoiding
+DPI scaling mismatches between monitors.
 """
 
-from PySide6.QtWidgets import QWidget, QLabel, QApplication
-from PySide6.QtCore import Qt, QRect, QPoint, QSize, Signal
-from PySide6.QtGui import QPainter, QColor, QPixmap, QCursor, QFont, QPen, QRegion, QScreen
+from PySide6.QtWidgets import QWidget, QLabel
+from PySide6.QtCore import Qt, QRect, QPoint, Signal
+from PySide6.QtGui import QPainter, QColor, QPixmap, QCursor, QPen, QRegion, QScreen
 
 UI_COLOR = QColor(116, 0, 150)
 OVERLAY_COLOR = QColor(0, 0, 0, 190)
 HANDLE_SIZE = 24
-BORDER_WIDTH = 1
 
 
 class RegionSelector(QWidget):
-    """Full-screen overlay with dark veil and selection hole.
+    """Full-screen overlay on a single monitor with dark veil and selection hole."""
 
-    The overlay spans the entire virtual desktop (all monitors).
-    The Win32 capture (physical pixels) is scaled to match Qt's logical pixel space.
-    """
-
-    region_selected = Signal(QRect)
+    region_selected = Signal(QRect)  # Selection in widget-local coordinates
     selection_cancelled = Signal()
 
-    def __init__(self, screenshot: QPixmap, screen_offset: QPoint = QPoint(0, 0)):
+    def __init__(self, screenshot: QPixmap, screen: QScreen):
         super().__init__()
-        self._screen_offset = screen_offset
+        self._screen = screen
+        self._screen_geo = screen.geometry()  # Logical pixel geometry
         self._start = QPoint()
         self._end = QPoint()
         self._selecting = False
         self._selection = QRect()
         self._has_selection = False
+
+        # Scale capture (physical pixels) to screen's logical pixel size
+        self._screenshot = screenshot.scaled(
+            self._screen_geo.width(), self._screen_geo.height(),
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -40,26 +43,12 @@ class RegionSelector(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        # Calculate the virtual desktop geometry in Qt's logical pixels
-        virtual_rect = QRect()
-        for screen in QApplication.screens():
-            virtual_rect = virtual_rect.united(screen.geometry())
+        # Position exactly on the target monitor
+        self.setGeometry(self._screen_geo)
 
-        self._virtual_origin = virtual_rect.topLeft()
-        self._virtual_size = virtual_rect.size()
-
-        # Scale the Win32 capture (physical pixels) to fit Qt's logical pixel space
-        self._screenshot = screenshot.scaled(
-            self._virtual_size,
-            Qt.AspectRatioMode.IgnoreAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-        # Position the overlay at the virtual desktop origin
-        self.setGeometry(virtual_rect)
-
-        # Dimension label
+        # Labels
         self._dim_label = QLabel(self)
         self._dim_label.setStyleSheet(
             "background: rgba(116,0,150,220); color: white; padding: 4px 10px; "
@@ -75,7 +64,7 @@ class RegionSelector(QWidget):
         self._coord_label.hide()
 
     def showFullScreen(self):
-        """Override to use show() instead of actual fullscreen (avoids borders/taskbar issues)."""
+        """Show as a normal window positioned exactly on the target monitor."""
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -85,24 +74,20 @@ class RegionSelector(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Draw the screenshot (already scaled to logical pixels)
         painter.drawPixmap(0, 0, self._screenshot)
 
         if self._has_selection and not self._selection.isNull():
             sel = self._selection.normalized()
 
-            # Dark overlay outside selection
             overlay_region = QRegion(self.rect()).subtracted(QRegion(sel))
             painter.setClipRegion(overlay_region)
             painter.fillRect(self.rect(), OVERLAY_COLOR)
             painter.setClipping(False)
 
-            # Selection border
-            painter.setPen(QPen(UI_COLOR, BORDER_WIDTH))
+            painter.setPen(QPen(UI_COLOR, 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(sel)
 
-            # Resize handles
             painter.setPen(QPen(QColor("white"), 1))
             painter.setBrush(UI_COLOR)
             hs = HANDLE_SIZE // 2
@@ -116,11 +101,14 @@ class RegionSelector(QWidget):
             painter.drawLine(pos.x(), 0, pos.x(), self.height())
             painter.drawLine(0, pos.y(), self.width(), pos.y())
 
-            abs_x = pos.x() + self._virtual_origin.x()
-            abs_y = pos.y() + self._virtual_origin.y()
+            abs_x = pos.x() + self._screen_geo.x()
+            abs_y = pos.y() + self._screen_geo.y()
             self._coord_label.setText(f"{abs_x}, {abs_y}")
             self._coord_label.adjustSize()
-            self._coord_label.move(pos.x() + 15, pos.y() + 15)
+            self._coord_label.move(
+                min(pos.x() + 15, self.width() - self._coord_label.width() - 5),
+                min(pos.y() + 15, self.height() - self._coord_label.height() - 5),
+            )
             self._coord_label.show()
 
         painter.end()
@@ -156,14 +144,7 @@ class RegionSelector(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and self._selecting:
             self._selecting = False
             if self._selection.width() > 5 and self._selection.height() > 5:
-                # Convert logical widget coords to screen coords for cropping
-                screen_rect = QRect(
-                    self._selection.x() + self._virtual_origin.x(),
-                    self._selection.y() + self._virtual_origin.y(),
-                    self._selection.width(),
-                    self._selection.height(),
-                )
-                self.region_selected.emit(screen_rect)
+                self.region_selected.emit(self._selection)
                 self.close()
             else:
                 self._has_selection = False
@@ -176,13 +157,7 @@ class RegionSelector(QWidget):
             self.close()
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if self._has_selection and not self._selection.isNull():
-                screen_rect = QRect(
-                    self._selection.x() + self._virtual_origin.x(),
-                    self._selection.y() + self._virtual_origin.y(),
-                    self._selection.width(),
-                    self._selection.height(),
-                )
-                self.region_selected.emit(screen_rect)
+                self.region_selected.emit(self._selection)
                 self.close()
 
     def _update_dim_label(self):

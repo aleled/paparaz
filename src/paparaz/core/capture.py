@@ -1,14 +1,12 @@
-"""Screen capture using Win32 API for reliable multi-monitor support."""
+"""Screen capture using Win32 API - single monitor under cursor, DPI-aware."""
 
 import ctypes
 from ctypes import wintypes
 from PySide6.QtGui import QImage, QPixmap
-from paparaz.utils.monitors import get_virtual_screen_geometry
 
 
-def capture_all_screens() -> QPixmap:
-    """Capture the entire virtual screen (all monitors)."""
-    # DPI awareness
+def _ensure_dpi_aware():
+    """Enable per-monitor DPI awareness."""
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except (AttributeError, OSError):
@@ -17,21 +15,22 @@ def capture_all_screens() -> QPixmap:
         except (AttributeError, OSError):
             pass
 
-    x, y, width, height = get_virtual_screen_geometry()
+
+def capture_region_native(x: int, y: int, width: int, height: int) -> QPixmap:
+    """Capture a specific screen region using Win32 BitBlt (physical pixel coordinates)."""
+    _ensure_dpi_aware()
 
     hdc_screen = ctypes.windll.user32.GetDC(None)
     hdc_mem = ctypes.windll.gdi32.CreateCompatibleDC(hdc_screen)
     hbmp = ctypes.windll.gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
     old_bmp = ctypes.windll.gdi32.SelectObject(hdc_mem, hbmp)
 
-    # BitBlt from screen to memory DC
     SRCCOPY = 0x00CC0020
     ctypes.windll.gdi32.BitBlt(
         hdc_mem, 0, 0, width, height,
         hdc_screen, x, y, SRCCOPY
     )
 
-    # Get bitmap data
     class BITMAPINFOHEADER(ctypes.Structure):
         _fields_ = [
             ("biSize", wintypes.DWORD),
@@ -60,21 +59,32 @@ def capture_all_screens() -> QPixmap:
 
     ctypes.windll.gdi32.GetDIBits(
         hdc_mem, hbmp, 0, height,
-        buf, ctypes.byref(bmi), 0  # DIB_RGB_COLORS
+        buf, ctypes.byref(bmi), 0
     )
 
-    # Cleanup GDI objects
     ctypes.windll.gdi32.SelectObject(hdc_mem, old_bmp)
     ctypes.windll.gdi32.DeleteObject(hbmp)
     ctypes.windll.gdi32.DeleteDC(hdc_mem)
     ctypes.windll.user32.ReleaseDC(None, hdc_screen)
 
-    # Convert BGRA buffer to QImage
     img = QImage(buf, width, height, width * 4, QImage.Format.Format_ARGB32)
-    # QImage references the buffer, so we need a deep copy
-    img = img.copy()
+    img = img.copy()  # Deep copy since buf will be freed
 
     return QPixmap.fromImage(img)
+
+
+def capture_monitor(screen) -> QPixmap:
+    """Capture a single QScreen in its native physical resolution."""
+    geo = screen.geometry()          # Logical pixels
+    dpr = screen.devicePixelRatio()  # e.g. 1.25 for 125% scaling
+
+    # Physical pixel coordinates and dimensions
+    phys_x = int(geo.x() * dpr)
+    phys_y = int(geo.y() * dpr)
+    phys_w = int(geo.width() * dpr)
+    phys_h = int(geo.height() * dpr)
+
+    return capture_region_native(phys_x, phys_y, phys_w, phys_h)
 
 
 def capture_region(pixmap: QPixmap, x: int, y: int, w: int, h: int) -> QPixmap:

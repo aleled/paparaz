@@ -16,7 +16,7 @@ from paparaz.core.elements import (
     MaskElement, NumberElement, ElementType,
 )
 
-PANEL_WIDTH = 250
+PANEL_WIDTH = 200
 
 PANEL_STYLE = """
 QWidget#sidePanel {
@@ -24,65 +24,67 @@ QWidget#sidePanel {
     border-right: 1px solid #333;
 }
 QLabel {
-    color: #ccc;
-    font-size: 11px;
+    color: #bbb;
+    font-size: 10px;
     padding: 0;
 }
 QLabel#sectionTitle {
-    color: #888;
-    font-size: 10px;
+    color: #777;
+    font-size: 9px;
     font-weight: bold;
-    padding: 6px 0 2px 0;
+    padding: 4px 0 1px 0;
     border-bottom: 1px solid #2a2a3e;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
+    text-transform: uppercase;
 }
 QLabel#editBanner {
     color: #fff;
     background: #740096;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: bold;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 3px 6px;
+    border-radius: 3px;
 }
 QSlider::groove:horizontal {
-    height: 4px; background: #444; border-radius: 2px;
+    height: 3px; background: #444; border-radius: 1px;
 }
 QSlider::handle:horizontal {
-    background: #740096; width: 14px; height: 14px;
-    margin: -5px 0; border-radius: 7px;
+    background: #740096; width: 12px; height: 12px;
+    margin: -4px 0; border-radius: 6px;
 }
 QSlider::handle:horizontal:hover { background: #9e2ac0; }
 QSpinBox, QComboBox, QFontComboBox {
     background: #2a2a3e; color: #ddd;
-    border: 1px solid #444; border-radius: 4px;
-    padding: 3px 6px; font-size: 12px;
+    border: 1px solid #444; border-radius: 3px;
+    padding: 2px 4px; font-size: 10px;
+    max-height: 22px;
 }
 QSpinBox::up-button, QSpinBox::down-button {
-    width: 16px; background: #333; border: none;
+    width: 14px; background: #333; border: none;
 }
-QComboBox::drop-down { border: none; width: 20px; }
+QComboBox::drop-down { border: none; width: 16px; }
 QComboBox QAbstractItemView {
     background: #2a2a3e; color: #ddd;
     selection-background-color: #740096;
 }
 QPushButton#colorSwatch {
-    border: 2px solid #555; border-radius: 4px;
-    min-width: 32px; min-height: 32px;
-    max-width: 32px; max-height: 32px;
+    border: 2px solid #555; border-radius: 3px;
+    min-width: 24px; min-height: 24px;
+    max-width: 24px; max-height: 24px;
 }
 QPushButton#colorSwatch:hover { border-color: #999; }
-QCheckBox { color: #ccc; font-size: 11px; spacing: 6px; }
+QCheckBox { color: #bbb; font-size: 10px; spacing: 4px; }
 QCheckBox::indicator {
-    width: 16px; height: 16px;
-    border: 1px solid #555; border-radius: 3px;
+    width: 14px; height: 14px;
+    border: 1px solid #555; border-radius: 2px;
     background: #2a2a3e;
 }
 QCheckBox::indicator:checked { background: #740096; border-color: #740096; }
 QToolButton {
     background: #2a2a3e; border: 1px solid #444;
-    border-radius: 4px; padding: 4px;
-    min-width: 28px; min-height: 28px;
-    max-width: 28px; max-height: 28px;
+    border-radius: 3px; padding: 2px;
+    min-width: 24px; min-height: 24px;
+    max-width: 24px; max-height: 24px;
 }
 QToolButton:hover { background: #3a3a4e; }
 QToolButton:checked { background: #740096; border-color: #740096; }
@@ -157,8 +159,8 @@ class SidePanel(QWidget):
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         scroll_widget = QWidget()
         self._layout = QVBoxLayout(scroll_widget)
-        self._layout.setContentsMargins(12, 8, 12, 12)
-        self._layout.setSpacing(4)
+        self._layout.setContentsMargins(8, 4, 8, 8)
+        self._layout.setSpacing(2)
         scroll.setWidget(scroll_widget)
 
         outer = QVBoxLayout(self)
@@ -534,10 +536,10 @@ class SidePanel(QWidget):
 
     def _make_fmt_button(self, icon_name: str, tooltip: str) -> QToolButton:
         btn = QToolButton()
-        btn.setIcon(get_icon(icon_name, 18))
+        btn.setIcon(get_icon(icon_name, 16))
         btn.setToolTip(tooltip)
         btn.setCheckable(True)
-        btn.setFixedSize(28, 28)
+        btn.setFixedSize(24, 24)
         return btn
 
     def _wrap_layout(self, layout) -> QWidget:

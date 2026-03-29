@@ -101,7 +101,8 @@ class AnnotationElement:
         if not self.selected:
             return
         rect = self.bounding_rect()
-        sel_rect = rect.adjusted(-5, -5, 5, 5)
+        p = self.SEL_PADDING
+        sel_rect = rect.adjusted(-p, -p, p, p)
 
         # Tinted overlay on bounding rect
         painter.setPen(Qt.PenStyle.NoPen)
@@ -156,15 +157,22 @@ class AnnotationElement:
         painter.setPen(QColor(255, 255, 255))
         painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, text)
 
+    SEL_PADDING = 5  # Must match the adjustment in paint_selection
+
     def _handle_positions(self) -> list[tuple[float, float]]:
-        r = self.bounding_rect()
+        """Handle positions on the selection border (adjusted rect, not raw bounding rect)."""
+        r = self.bounding_rect().adjusted(
+            -self.SEL_PADDING, -self.SEL_PADDING,
+            self.SEL_PADDING, self.SEL_PADDING,
+        )
         return [
             (r.left(), r.top()), (r.center().x(), r.top()), (r.right(), r.top()),
             (r.left(), r.center().y()), (r.right(), r.center().y()),
             (r.left(), r.bottom()), (r.center().x(), r.bottom()), (r.right(), r.bottom()),
         ]
 
-    def handle_at(self, point: QPointF, tolerance: float = 10) -> Optional[int]:
+    def handle_at(self, point: QPointF, tolerance: float = 12) -> Optional[int]:
+        """Check if a point is near any handle. Returns handle index or None."""
         if not self.selected:
             return None
         for i, (hx, hy) in enumerate(self._handle_positions()):

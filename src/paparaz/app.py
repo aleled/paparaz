@@ -2,9 +2,9 @@
 
 from PySide6.QtWidgets import QApplication, QFileDialog
 from PySide6.QtCore import QObject, QPoint, QRect, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QCursor
 
-from paparaz.core.capture import capture_all_screens, capture_region
+from paparaz.core.capture import capture_monitor, capture_region
 from paparaz.core.settings import SettingsManager
 from paparaz.ui.tray import TrayIcon
 from paparaz.ui.overlay import RegionSelector
@@ -12,7 +12,6 @@ from paparaz.ui.editor import EditorWindow
 from paparaz.ui.pin_window import PinWindow
 from paparaz.ui.settings_dialog import SettingsDialog
 from paparaz.utils.hotkey import GlobalHotkeyListener
-from paparaz.utils.monitors import get_virtual_screen_geometry
 
 
 class PapaRazApp(QObject):
@@ -23,20 +22,18 @@ class PapaRazApp(QObject):
         self._app = app
         self._settings = SettingsManager()
 
-        # UI components
         self._tray = TrayIcon()
         self._overlay = None
         self._editor = None
         self._full_capture = None
+        self._capture_screen = None  # QScreen being captured
         self._pin_windows: list[PinWindow] = []
 
-        # Hotkey listener
         self._hotkey_listener = GlobalHotkeyListener()
         self._capture_hk_id = self._hotkey_listener.register(
             self._settings.settings.hotkeys.capture
         )
 
-        # Connect signals
         self._tray.capture_requested.connect(self._start_capture)
         self._tray.delay_capture_requested.connect(self._delay_capture)
         self._tray.open_image_requested.connect(self._open_image)
@@ -57,7 +54,6 @@ class PapaRazApp(QObject):
             QTimer.singleShot(150, self._start_capture)
 
     def _delay_capture(self, seconds: int):
-        """Capture after a delay (countdown)."""
         self._tray.show_message("PapaRaZ", f"Capturing in {seconds} seconds...")
         QTimer.singleShot(seconds * 1000, self._start_capture)
 
@@ -65,9 +61,23 @@ class PapaRazApp(QObject):
         if self._editor:
             self._editor.hide()
 
-        self._full_capture = capture_all_screens()
+        # Find which monitor the cursor is on
+        cursor_pos = QCursor.pos()
+        target_screen = None
+        for screen in QApplication.screens():
+            if screen.geometry().contains(cursor_pos):
+                target_screen = screen
+                break
+        if not target_screen:
+            target_screen = QApplication.primaryScreen()
 
-        self._overlay = RegionSelector(self._full_capture)
+        self._capture_screen = target_screen
+
+        # Capture only that monitor (physical pixels)
+        self._full_capture = capture_monitor(target_screen)
+
+        # Show overlay on that monitor only
+        self._overlay = RegionSelector(self._full_capture, target_screen)
         self._overlay.region_selected.connect(self._on_region_selected)
         self._overlay.selection_cancelled.connect(self._on_selection_cancelled)
         self._overlay.showFullScreen()
@@ -77,26 +87,14 @@ class PapaRazApp(QObject):
             self._overlay.close()
             self._overlay = None
 
-        if self._full_capture:
-            # The overlay works in Qt logical pixels. The capture is in physical pixels.
-            # Compute the virtual desktop in both coordinate systems to find the scale factor.
-            virtual_rect = QRect()
-            for screen in QApplication.screens():
-                virtual_rect = virtual_rect.united(screen.geometry())
-
-            logical_w = virtual_rect.width()
-            logical_h = virtual_rect.height()
-            phys_w = self._full_capture.width()
-            phys_h = self._full_capture.height()
-
-            # Scale selection from logical to physical pixel coords
-            sx = phys_w / logical_w if logical_w > 0 else 1.0
-            sy = phys_h / logical_h if logical_h > 0 else 1.0
-
-            px = int((rect.x() - virtual_rect.x()) * sx)
-            py = int((rect.y() - virtual_rect.y()) * sy)
-            pw = int(rect.width() * sx)
-            ph = int(rect.height() * sy)
+        if self._full_capture and self._capture_screen:
+            # rect is in widget-local logical pixels
+            # Scale to physical pixels in the capture
+            dpr = self._capture_screen.devicePixelRatio()
+            px = int(rect.x() * dpr)
+            py = int(rect.y() * dpr)
+            pw = int(rect.width() * dpr)
+            ph = int(rect.height() * dpr)
 
             cropped = capture_region(self._full_capture, px, py, pw, ph)
             self._open_editor(cropped)
@@ -136,7 +134,6 @@ class PapaRazApp(QObject):
                 self._open_editor(pixmap)
 
     def _pin_screenshot(self, rendered: QPixmap, background: QPixmap, elements: list):
-        """Create an always-on-top floating pin with resume-edit capability."""
         pin = PinWindow(rendered, background=background, elements=elements)
         pin.closed.connect(lambda: self._pin_windows.remove(pin) if pin in self._pin_windows else None)
         pin.edit_requested.connect(self._resume_editing_pin)
@@ -144,7 +141,6 @@ class PapaRazApp(QObject):
         self._pin_windows.append(pin)
 
     def _resume_editing_pin(self, pin_window):
-        """Resume editing a pinned screenshot in a new editor."""
         if pin_window.background and not pin_window.background.isNull():
             self._open_editor(pin_window.background, elements=pin_window.elements)
             pin_window.close()

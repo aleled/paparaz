@@ -1,5 +1,38 @@
 # PapaRaZ - Changelog
 
+## [0.7.0] - 2026-03-29
+
+### Adaptive Toolbar (Flow Layout)
+- **Toolbar wraps to multiple rows** when editor window is narrow — no more hidden buttons
+- All 22 buttons (13 tools + 9 actions) flow row-by-row based on available width
+- Extra visual gap separates tool group from action group
+- Overflow "⋯" menu appears only when >3 rows would be needed (last resort)
+- Toolbar takes full editor width; `heightForWidth()` ensures correct vertical allocation
+- `_compute_flow()` helper cleanly computes per-button positions
+
+### Side Panel — Pin / Auto-Hide / Hidden Modes
+- **Header bar** added to side panel with mode toggle button + close button
+- **Three modes** — cycle with header button or programmatically:
+  - `auto` — shows on element select, auto-hides 3 seconds after deselect
+  - `pinned` — always visible regardless of selection
+  - `hidden` — always hidden; grip tab shown on canvas left edge
+- `SidePanel.mode_changed` signal notifies editor of mode changes
+- `SidePanel.on_element_selected(elem)` method centralizes show/hide logic
+- `QTimer` (3 s, single-shot) drives auto-hide in `auto` mode
+
+### Panel Grip Tab
+- Small purple vertical tab appears on canvas left edge when panel is in `hidden` mode
+- Clicking grip tab switches panel back to `auto` mode and reveals it
+- Positioned dynamically in `EditorWindow.resizeEvent()`
+
+### Bug Fixes / Improvements
+- Single-monitor capture only (monitor under cursor) — prevents DPI distortion on multi-monitor setups
+- `setMouseTracking(True)` on `RegionSelector` — fixes stuck crosshair cursor
+- Handle hit-test now uses `SEL_PADDING=5` matching paint positions — resize handles work correctly
+- Property changes update selected element immediately (no need to deselect and reselect)
+
+---
+
 ## [0.6.0] - 2026-03-29
 
 ### Phase 6: Advanced Features

@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QColorDialog, QCheckBox, QFontComboBox,
     QScrollArea,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap, QIcon
 
 from paparaz.tools.base import ToolType
@@ -18,8 +18,11 @@ from paparaz.core.elements import (
 
 PANEL_WIDTH = 186
 
+AUTO_HIDE_DELAY_MS = 3000  # ms before auto-hide triggers after deselect
+
 PANEL_STYLE = """
 QWidget#sidePanel { background: #1a1a2e; border-right: 1px solid #333; }
+QWidget#panelHeader { background: #111122; border-bottom: 1px solid #333; }
 QLabel { color: #aaa; font-size: 9px; padding: 0; margin: 0; }
 QLabel#sectionTitle {
     color: #666; font-size: 8px; font-weight: bold;
@@ -117,12 +120,24 @@ class SidePanel(QWidget):
     text_direction_changed = Signal(str)
     text_bg_enabled_changed = Signal(bool)
     text_bg_color_changed = Signal(str)
+    mode_changed = Signal(str)   # 'auto', 'pinned', 'hidden'
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("sidePanel")
         self.setStyleSheet(PANEL_STYLE)
         self.setFixedWidth(PANEL_WIDTH)
+
+        # Mode: 'auto' = show on select / hide on deselect after delay
+        #       'pinned' = always visible
+        #       'hidden' = always hidden (grip tab in editor)
+        self._mode = "auto"
+
+        # Auto-hide timer for 'auto' mode
+        self._auto_hide_timer = QTimer(self)
+        self._auto_hide_timer.setSingleShot(True)
+        self._auto_hide_timer.setInterval(AUTO_HIDE_DELAY_MS)
+        self._auto_hide_timer.timeout.connect(self._do_auto_hide)
 
         self._fg_color = "#FF0000"
         self._bg_color = "#FFFFFF"
@@ -142,8 +157,44 @@ class SidePanel(QWidget):
         self._layout.setSpacing(1)
         scroll.setWidget(sw)
 
+        # Header bar: mode toggle + close button
+        self._header = QWidget()
+        self._header.setObjectName("panelHeader")
+        self._header.setFixedHeight(24)
+        hdr_layout = QHBoxLayout(self._header)
+        hdr_layout.setContentsMargins(4, 2, 4, 2)
+        hdr_layout.setSpacing(2)
+
+        self._mode_btn = QToolButton()
+        self._mode_btn.setFixedSize(50, 18)
+        self._mode_btn.setStyleSheet(
+            "QToolButton{background:#2a2a3e;border:1px solid #3a3a4e;"
+            "border-radius:3px;color:#aaa;font-size:8px;padding:0;}"
+            "QToolButton:hover{background:#3a3a4e;color:#fff;}"
+        )
+        self._mode_btn.setToolTip("Cycle panel mode: auto → pinned → hidden")
+        self._mode_btn.clicked.connect(self._cycle_mode)
+        hdr_layout.addWidget(self._mode_btn)
+        hdr_layout.addStretch()
+
+        self._pin_close_btn = QToolButton()
+        self._pin_close_btn.setText("×")
+        self._pin_close_btn.setFixedSize(18, 18)
+        self._pin_close_btn.setStyleSheet(
+            "QToolButton{background:#2a2a3e;border:1px solid #3a3a4e;"
+            "border-radius:3px;color:#aaa;font-size:11px;padding:0;}"
+            "QToolButton:hover{background:#740096;color:#fff;border-color:#740096;}"
+        )
+        self._pin_close_btn.setToolTip("Hide panel")
+        self._pin_close_btn.clicked.connect(self._on_close_clicked)
+        hdr_layout.addWidget(self._pin_close_btn)
+
+        self._update_mode_btn_text()
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(self._header)
         outer.addWidget(scroll)
 
         # Edit banner
@@ -565,6 +616,56 @@ class SidePanel(QWidget):
             if combo.itemData(i) == data:
                 combo.setCurrentIndex(i)
                 return
+
+    # --- Panel mode ---
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    def set_mode(self, mode: str):
+        """Set panel mode: 'auto', 'pinned', or 'hidden'."""
+        self._mode = mode
+        self._update_mode_btn_text()
+        self._auto_hide_timer.stop()
+        if mode == "hidden":
+            self.hide()
+        elif mode == "pinned":
+            self.show()
+        # 'auto': visibility managed by on_element_selected
+        self.mode_changed.emit(mode)
+
+    def _cycle_mode(self):
+        order = ["auto", "pinned", "hidden"]
+        idx = order.index(self._mode)
+        self.set_mode(order[(idx + 1) % len(order)])
+
+    def _on_close_clicked(self):
+        """Hide button clicked — switch to hidden mode."""
+        self.set_mode("hidden")
+
+    def _update_mode_btn_text(self):
+        labels = {"auto": "● Auto", "pinned": "📌 Pin", "hidden": "✕ Hide"}
+        self._mode_btn.setText(labels.get(self._mode, self._mode))
+
+    def _do_auto_hide(self):
+        if self._mode == "auto":
+            self.hide()
+
+    def on_element_selected(self, element):
+        """Called by editor when element selection changes.
+        Manages show/hide according to current mode.
+        """
+        self._auto_hide_timer.stop()
+        if element is not None:
+            self.load_element_properties(element)
+            if self._mode in ("auto", "pinned"):
+                self.show()
+        else:
+            self.clear_element_properties()
+            if self._mode == "auto":
+                self._auto_hide_timer.start()
+            # pinned: stay visible; hidden: stay hidden
 
     # --- Color pickers ---
 

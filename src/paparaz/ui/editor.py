@@ -27,6 +27,38 @@ from paparaz.core.elements import (
 )
 
 
+class _PanelGripTab(QWidget):
+    """Small vertical tab on canvas left edge to reveal hidden side panel."""
+
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(14, 56)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Show properties panel")
+        self.hide()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setBrush(QColor(116, 0, 150, 210))
+        p.setPen(Qt.PenStyle.NoPen)
+        # Only round right corners
+        p.drawRoundedRect(self.rect(), 5, 5)
+        p.setBrush(QColor(255, 255, 255, 200))
+        # Draw "›" chevron
+        mid_y = self.height() // 2
+        pts_x = self.width() // 2
+        for dy in (-5, 0, 5):
+            p.drawEllipse(pts_x - 1, mid_y + dy - 1, 3, 3)
+        p.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
+
 class EditorWindow(QWidget):
     """Frameless aero-style editor - just canvas + floating toolbar + side panel."""
 
@@ -52,14 +84,9 @@ class EditorWindow(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(2)
 
-        # Toolbar row
-        toolbar_row = QHBoxLayout()
-        toolbar_row.setContentsMargins(0, 0, 0, 0)
+        # Toolbar row — full width so flow layout can use all available space
         self._toolbar = FlameshotToolbar()
-        toolbar_row.addStretch()
-        toolbar_row.addWidget(self._toolbar)
-        toolbar_row.addStretch()
-        layout.addLayout(toolbar_row)
+        layout.addWidget(self._toolbar)
 
         # Body: optional side panel + canvas
         body = QHBoxLayout()
@@ -67,13 +94,17 @@ class EditorWindow(QWidget):
         body.setSpacing(2)
 
         self._side_panel = SidePanel()
-        self._side_panel.hide()  # Hidden by default, shown when element selected
+        self._side_panel.hide()  # Hidden by default (auto mode, no selection)
         body.addWidget(self._side_panel)
 
         self._canvas = AnnotationCanvas(screenshot)
         body.addWidget(self._canvas, 1)
 
         layout.addLayout(body, 1)
+
+        # Grip tab — shown when side panel is in 'hidden' mode
+        self._grip_tab = _PanelGripTab(self)
+        self._grip_tab.clicked.connect(self._on_grip_tab_clicked)
 
         # Status label at bottom (minimal)
         self._status = QLabel("V:Select  P:Pen  B:Brush  L:Line  A:Arrow  R:Rect  E:Ellipse  T:Text  N:Num  S:Stamp  X:Erase  M:Blur")
@@ -146,6 +177,9 @@ class EditorWindow(QWidget):
         self._side_panel.text_bg_enabled_changed.connect(self._on_text_bg_enabled)
         self._side_panel.text_bg_color_changed.connect(self._on_text_bg_color)
 
+        # Side panel mode changes
+        self._side_panel.mode_changed.connect(self._on_panel_mode_changed)
+
         # Canvas signals
         self._canvas.element_selected.connect(self._on_element_selected)
         self._canvas.request_text_edit.connect(self._on_text_edit_request)
@@ -187,15 +221,40 @@ class EditorWindow(QWidget):
             if not self._canvas.selected_element:
                 self._side_panel.update_for_tool(tool_type)
 
-    # --- Element selection -> show/hide side panel ---
+    # --- Element selection -> side panel ---
 
     def _on_element_selected(self, element):
-        if element is not None:
-            self._side_panel.load_element_properties(element)
-            self._side_panel.show()
+        # Delegate show/hide logic to panel based on its mode
+        self._side_panel.on_element_selected(element)
+
+    def _on_panel_mode_changed(self, mode: str):
+        self._grip_tab.setVisible(mode == "hidden")
+        if mode == "hidden":
+            self._update_grip_tab_pos()
+
+    def _on_grip_tab_clicked(self):
+        """Grip tab clicked — switch panel back to auto mode and show it."""
+        self._side_panel.set_mode("auto")
+        elem = self._canvas.selected_element
+        if elem:
+            self._side_panel.on_element_selected(elem)
         else:
-            self._side_panel.clear_element_properties()
-            self._side_panel.hide()
+            self._side_panel.show()
+
+    def _update_grip_tab_pos(self):
+        """Position grip tab at the left edge of the canvas area."""
+        canvas_geo = self._canvas.geometry()
+        # Map canvas geometry to editor coordinates
+        # canvas parent is the body layout widget which is the editor itself
+        tab_h = self._grip_tab.height()
+        x = canvas_geo.x()
+        y = canvas_geo.y() + (canvas_geo.height() - tab_h) // 2
+        self._grip_tab.move(x, y)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._grip_tab.isVisible():
+            self._update_grip_tab_pos()
 
     def _on_text_edit_request(self, element):
         if isinstance(element, TextElement):

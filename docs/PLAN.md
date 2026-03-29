@@ -83,8 +83,10 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] 5.10 Edit mode banner when element selected
 - [x] 5.11 Double-click to re-edit text elements
 - [x] 5.12 Region selector with dark overlay hole effect and purple handles
-- [ ] 5.13 Light theme option
-- [ ] 5.14 Smooth animations and transitions
+- [x] 5.13 Adaptive toolbar flow layout (wraps to multiple rows on narrow windows)
+- [x] 5.14 Side panel pin/auto-hide/hidden modes with header bar and grip tab
+- [ ] 5.15 Light theme option
+- [ ] 5.16 Smooth animations and transitions
 
 ---
 
@@ -122,7 +124,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Layers panel (element z-ordering with drag)
 - [ ] Text outline / stroke on text
 - [ ] Curved arrows / Bezier curves
-- [ ] Stamp/emoji tool
+- [x] Stamp/emoji tool (16 predefined SVG stamps: check, cross, OK, BAD, APPROVED, REJECTED, star, heart, warning, info, question, thumbsup, thumbsdown, priority, bug, note)
 - [ ] Magnifier tool (zoom lens while selecting)
 - [ ] Video/GIF recording
 - [ ] Upload to cloud (Imgur, custom endpoint)
@@ -137,6 +139,6 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Not started
 - [x] Completed
 
-## Current Status: Phase 6 mostly complete, Phase 7 in progress
-**Version**: 0.6.0
+## Current Status: Phase 5/6 complete, Phase 7 in progress
+**Version**: 0.7.0
 **Last updated**: 2026-03-29

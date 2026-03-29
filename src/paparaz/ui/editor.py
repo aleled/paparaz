@@ -40,7 +40,7 @@ class EditorWindow(QMainWindow):
     """Main annotation editor window with Flameshot-style UI."""
 
     closed = Signal()
-    pin_requested = Signal(QPixmap)
+    pin_requested = Signal(QPixmap, QPixmap, list)  # rendered, background, elements
 
     def __init__(self, screenshot: QPixmap, settings_manager=None, parent=None):
         super().__init__(parent)
@@ -325,8 +325,11 @@ class EditorWindow(QMainWindow):
             self._status.showMessage("Pasted image from clipboard", 2000)
 
     def _pin_current(self):
-        pixmap = self._canvas.render_to_pixmap()
-        self.pin_requested.emit(pixmap)
+        import copy
+        rendered = self._canvas.render_to_pixmap()
+        background = self._canvas._background.copy()
+        elements = copy.copy(self._canvas.elements)
+        self.pin_requested.emit(rendered, background, elements)
         self._status.showMessage("Pinned to screen", 2000)
 
     def closeEvent(self, event):

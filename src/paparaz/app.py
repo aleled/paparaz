@@ -95,10 +95,13 @@ class PapaRazApp(QObject):
             self._overlay.close()
             self._overlay = None
 
-    def _open_editor(self, pixmap: QPixmap):
+    def _open_editor(self, pixmap: QPixmap, elements: list = None):
         self._editor = EditorWindow(pixmap, settings_manager=self._settings)
         self._editor.closed.connect(self._on_editor_closed)
         self._editor.pin_requested.connect(self._pin_screenshot)
+        if elements:
+            self._editor._canvas.elements = elements
+            self._editor._canvas.update()
         self._editor.showMaximized()
 
     def _on_editor_closed(self):
@@ -121,12 +124,19 @@ class PapaRazApp(QObject):
             if not pixmap.isNull():
                 self._open_editor(pixmap)
 
-    def _pin_screenshot(self, pixmap: QPixmap):
-        """Create an always-on-top floating pin of the current capture."""
-        pin = PinWindow(pixmap)
+    def _pin_screenshot(self, rendered: QPixmap, background: QPixmap, elements: list):
+        """Create an always-on-top floating pin with resume-edit capability."""
+        pin = PinWindow(rendered, background=background, elements=elements)
         pin.closed.connect(lambda: self._pin_windows.remove(pin) if pin in self._pin_windows else None)
+        pin.edit_requested.connect(self._resume_editing_pin)
         pin.show()
         self._pin_windows.append(pin)
+
+    def _resume_editing_pin(self, pin_window):
+        """Resume editing a pinned screenshot in a new editor."""
+        if pin_window.background and not pin_window.background.isNull():
+            self._open_editor(pin_window.background, elements=pin_window.elements)
+            pin_window.close()
 
     def _show_settings(self):
         dlg = SettingsDialog(self._settings)

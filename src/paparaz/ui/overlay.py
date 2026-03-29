@@ -44,6 +44,7 @@ class RegionSelector(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setCursor(Qt.CursorShape.CrossCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMouseTracking(True)
 
         # Position exactly on the target monitor
         self.setGeometry(self._screen_geo)

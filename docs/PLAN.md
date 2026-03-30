@@ -123,7 +123,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 ---
 
 ## Future Enhancements (Backlog)
-- [ ] Custom color palette / recent colors
+- [x] Custom color palette / recent colors (side panel, persisted to settings)
 - [ ] Eyedropper / color grab tool (icon ready)
 - [ ] Layers panel (element z-ordering with drag)
 - [ ] Text outline / stroke on text
@@ -136,6 +136,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Localization (i18n)
 - [ ] Accessibility (screen reader support)
 - [ ] Project file format (.papraz) to save/load edits with full object state
+- [ ] Installer: force-kill running PapaRaZ.exe before install (taskkill fallback in Inno Setup)
 
 ---
 
@@ -144,5 +145,5 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Completed
 
 ## Current Status: Phase 6 complete, Phase 7 nearly complete (testing remaining)
-**Version**: 0.9.0
+**Version**: 0.9.2
 **Last updated**: 2026-03-30

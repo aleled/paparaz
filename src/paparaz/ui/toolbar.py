@@ -18,10 +18,43 @@ from paparaz.ui.icons import get_icon
 UI_COLOR = "#740096"
 UI_COLOR_ACTIVE = "#270032"
 BTN = 32          # Button diameter
-ICON = 18         # Icon size
+ICON = 24         # Icon size (matches SVG viewBox for crisp render)
 GAP = 6           # Gap between buttons
 MARGIN = 4        # Widget margin
 SEP = GAP * 2     # Extra gap between tool group and action group
+
+# Current theme colors — updated by apply_theme(); used when building new buttons
+_THEME_ACCENT        = UI_COLOR
+_THEME_ACCENT_HOVER  = "#9e2ac0"
+_THEME_ACCENT_PRESS  = UI_COLOR_ACTIVE
+_THEME_BG3           = "#3a3a4e"
+
+
+def _btn_qss() -> str:
+    """Generate button QSS from current theme colors."""
+    return (
+        f"QToolButton{{"
+        f"background:transparent;border:none;"
+        f"border-radius:{BTN // 2}px;padding:0;"
+        f"min-width:{BTN}px;min-height:{BTN}px;"
+        f"max-width:{BTN}px;max-height:{BTN}px;}}"
+        f"QToolButton:hover{{background:{_THEME_ACCENT_HOVER};}}"
+        f"QToolButton:checked{{background:{_THEME_ACCENT};}}"
+        f"QToolButton:pressed{{background:{_THEME_ACCENT_PRESS};}}"
+    )
+
+
+def _overflow_qss() -> str:
+    return (
+        f"QToolButton{{"
+        f"background:{_THEME_BG3};border:none;"
+        f"border-radius:{BTN // 2}px;padding:0;"
+        f"min-width:{BTN}px;min-height:{BTN}px;"
+        f"max-width:{BTN}px;max-height:{BTN}px;"
+        f"color:white;font-weight:bold;font-size:16px;}}"
+        f"QToolButton:hover{{background:{_THEME_ACCENT_HOVER};}}"
+        f"QToolButton::menu-indicator{{width:0;height:0;}}"
+    )
 
 TOOL_DEFS = [
     (ToolType.SELECT,    "select",    "Select (V)"),
@@ -60,28 +93,8 @@ N_TOOLS  = len(TOOL_DEFS)
 N_ACTIONS = len(ACTION_DEFS)
 N_TOTAL  = N_TOOLS + N_ACTIONS
 
-BTN_STYLE = f"""
-QToolButton {{
-    background-color: {UI_COLOR}; border: none;
-    border-radius: {BTN // 2}px; padding: 0;
-    min-width: {BTN}px; min-height: {BTN}px;
-    max-width: {BTN}px; max-height: {BTN}px;
-}}
-QToolButton:hover {{ background-color: #9e2ac0; }}
-QToolButton:checked {{ background-color: {UI_COLOR_ACTIVE}; }}
-"""
-
-OVERFLOW_STYLE = f"""
-QToolButton {{
-    background-color: #444; border: none;
-    border-radius: {BTN // 2}px; padding: 0;
-    min-width: {BTN}px; min-height: {BTN}px;
-    max-width: {BTN}px; max-height: {BTN}px;
-    color: white; font-weight: bold; font-size: 16px;
-}}
-QToolButton:hover {{ background-color: #666; }}
-QToolButton::menu-indicator {{ width: 0; height: 0; }}
-"""
+# BTN_STYLE / OVERFLOW_STYLE are now generated via _btn_qss() / _overflow_qss()
+# to allow dynamic theming — see apply_theme() on MultiEdgeToolbar.
 
 MENU_STYLE = """
 QMenu {
@@ -262,7 +275,7 @@ class MultiEdgeToolbar(QObject):
         self._overflow_btn = QToolButton(self.top_strip)
         self._overflow_btn.setText("\u22ef")
         self._overflow_btn.setFixedSize(BTN, BTN)
-        self._overflow_btn.setStyleSheet(OVERFLOW_STYLE)
+        self._overflow_btn.setStyleSheet(_overflow_qss())
         self._overflow_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._overflow_btn.hide()
 
@@ -327,7 +340,7 @@ class MultiEdgeToolbar(QObject):
         btn.setToolTip(tooltip)
         btn.setCheckable(checkable)
         btn.setFixedSize(BTN, BTN)
-        btn.setStyleSheet(BTN_STYLE)
+        btn.setStyleSheet(_btn_qss())
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         # WA_AlwaysShowToolTips ensures tooltips show on frameless windows
         btn.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
@@ -345,6 +358,19 @@ class MultiEdgeToolbar(QObject):
         btn = self._tool_buttons.get(tool_type)
         if btn:
             btn.setChecked(True)
+
+    def apply_theme(self, theme: dict):
+        """Re-style all buttons with theme colors."""
+        global _THEME_ACCENT, _THEME_ACCENT_HOVER, _THEME_ACCENT_PRESS, _THEME_BG3
+        _THEME_ACCENT       = theme.get("accent",         "#740096")
+        _THEME_ACCENT_HOVER = theme.get("accent_hover",   "#9e2ac0")
+        _THEME_ACCENT_PRESS = theme.get("accent_pressed", "#270032")
+        _THEME_BG3          = theme.get("bg3",            "#3a3a4e")
+        btn_qss  = _btn_qss()
+        over_qss = _overflow_qss()
+        for btn in self._buttons:
+            btn.setStyleSheet(btn_qss)
+        self._overflow_btn.setStyleSheet(over_qss)
 
     # -----------------------------------------------------------------------
     # Layout / distribution

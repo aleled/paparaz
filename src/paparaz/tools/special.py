@@ -346,7 +346,7 @@ class NumberingTool(BaseTool):
 
     def __init__(self, canvas):
         super().__init__(canvas)
-        self.marker_size = 28.0
+        self.marker_size = 16.0
         self.text_color = ""  # Empty = auto-contrast
 
     def on_press(self, pos: QPointF, event: QMouseEvent):

@@ -39,9 +39,11 @@ class HighlightTool(BaseTool):
     """Wide semi-transparent flat-cap marker strokes."""
     tool_type = ToolType.HIGHLIGHT
 
-    # Default style values applied when no saved properties exist
-    DEFAULT_COLOR = "#A0FFFF00"   # 63% opaque yellow
-    DEFAULT_WIDTH = 20
+    # Default style values applied when no saved properties exist.
+    # With Multiply blend mode the colour should be fully opaque — transparency
+    # comes from the blend, not from alpha.  Classic highlighter yellow.
+    DEFAULT_COLOR = "#FFFF00"   # opaque yellow (Multiply blend makes it transparent-looking)
+    DEFAULT_WIDTH = 16
 
     def __init__(self, canvas):
         super().__init__(canvas)

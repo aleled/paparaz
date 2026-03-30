@@ -1,5 +1,73 @@
 # PapaRaZ - Changelog
 
+## [0.9.2] - 2026-03-30
+
+### Rotation-Aware Resize (All Element Types)
+- **Rect / Ellipse**: Two-step algorithm — (1) inverse-rotate canvas delta into element-local frame, (2) translate rect so the opposite (anchor) corner stays fixed in canvas space. Previously, dragging any edge deformed all sides.
+- **Line / Arrow**: Screen-space solution — rotate endpoints to screen coords, move only the dragged endpoint, recompute the midpoint (new rotation center), inverse-rotate back. The anchor endpoint is mathematically guaranteed not to drift.
+- **Pen / Brush**: Same local-delta + anchor correction as Rect/Ellipse applied to the entire scaled point set.
+
+### Highlight Tool — True Highlighter Effect
+- `CompositionMode_Multiply` blend mode: `result = src × dst` — background always 100% visible, highlights feel like a real marker
+- Default width raised to **16 px** (was 3 px)
+- Default color **#FFFF00** (fully opaque yellow) — transparency comes from the Multiply blend, not from alpha
+- Independent defaults from other tools; set only on first activation so user changes persist
+
+### Shadow — Independent Blur Axes
+- `Shadow.blur_radius` split into `blur_x: float` and `blur_y: float` — directional shadow spread (e.g. wide horizontal shadow with tight vertical)
+- Side panel shows **BlX** and **BlY** sliders (0-40) instead of a single Blur slider
+- `_scale_blur(pix, rx, ry)`: separate horizontal/vertical downscale passes for anisotropic blur
+- `canvas.set_shadow_blur_x()` / `set_shadow_blur_y()` setters added
+- Backward-compatible settings migration: old `shadow_default_blur` maps to both axes on load
+
+### 0px Stroke — Borderless Filled Shapes
+- `_make_pen()` returns `QPen(Qt.PenStyle.NoPen)` when `line_width <= 0`
+- Width slider minimum changed from 1 → 0 px
+- Enables fully borderless filled rectangles and ellipses
+
+### Fill Opacity Fix
+- Filled shapes no longer appear semi-transparent at 100% opacity
+- Root cause: `QColor` from `background_color` hex string could carry an embedded alpha value; `c.setAlpha(255)` now strips it before setting the fill brush
+- Element-level opacity slider remains the sole transparency control
+
+### Recent Colors Palette
+- `RecentColorsPalette` widget added to side panel COLOR section
+- Left-click a swatch → set foreground; right-click → set background
+- Palette auto-populated as you pick colors via the Fg / Bg / shadow / text-bg pickers
+- Persisted to `~/.paparaz/settings.json` via `recent_colors` field
+
+### Side Panel — Reorganized Layout
+- **STROKE section** merges width slider + LINE STYLE (dash/cap/join) as a collapsible sub-row — only one section heading instead of two
+- **Shadow color** button moved inline with the Shadow checkbox — no extra row
+- **BlX / BlY** sliders replace single Blur slider within the shadow details block
+- All sections use `spacing=2` for tighter, more scannable layout
+- Width slider minimum → 0 (borderless fill)
+
+### HiDPI Toolbar Icons
+- `svg_to_icon()` now creates both 1× and 2× pixmaps (`setDevicePixelRatio(2.0)`) and calls `QIcon.addPixmap()` for both
+- Render hints: `Antialiasing + SmoothPixmapTransform` on both passes
+- Icons are sharp on 125 %, 150 %, 200 % display scaling
+
+### Transparent Toolbar Buttons
+- Default button background changed from `#270032` to `transparent` — only the canvas has a background fill
+- Hover and active states retain purple accent tint
+
+### Theme Live Preview in Settings
+- Settings dialog theme combo now re-styles both the dialog itself and the running editor window immediately on change (before clicking Save)
+- `_on_theme_preview()` wired to `currentIndexChanged`
+
+### Side Panel — Detach / Drag Fix
+- `SidePanel(parent=None)` — panel is now a true OS-level top-level window, not a child of the editor
+- Fixes: pressing the panel header to drag was triggering the editor's resize border filter (installed via `findChildren(QWidget)`)
+- Panel coordinates use screen space directly; no more `mapFromGlobal` drift
+
+### Bug Fixes
+- `QWidget#editorRoot` CSS selector now works (was never matching — `setObjectName("editorRoot")` added to editor `__init__`)
+- Toolbar per-widget `setStyleSheet` override fixed: `apply_theme()` re-applies QSS to every button individually
+- `_record_shadow_attr` not recording `blur_x` / `blur_y` history: added undo recording to both setters
+
+---
+
 ## [0.9.0] - 2026-03-30
 
 ### Application Icon

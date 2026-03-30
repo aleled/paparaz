@@ -14,7 +14,7 @@ from PySide6.QtGui import QColor, QFont, QIcon, QPixmap, QPainter
 
 from paparaz.core.settings import SettingsManager
 from paparaz.ui.icons import combo_arrow_css
-from paparaz.ui.app_theme import APP_THEMES
+from paparaz.ui.app_theme import APP_THEMES, get_theme, build_dialog_qss
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -166,7 +166,9 @@ class SettingsDialog(QDialog):
         self.setMinimumSize(780, 560)
         self.resize(860, 600)
         self.setWindowFlags(Qt.WindowType.Dialog)  # no always-on-top
-        self.setStyleSheet(_BASE + combo_arrow_css())
+        # Build stylesheet: use the currently saved app theme, falling back to _BASE
+        theme = get_theme(settings_manager.settings.app_theme)
+        self.setStyleSheet(build_dialog_qss(theme) + combo_arrow_css())
 
         self._sm = settings_manager
         self._s  = settings_manager.settings
@@ -351,6 +353,7 @@ class SettingsDialog(QDialog):
         idx = self._theme_combo.findData(getattr(self._s, 'app_theme', 'dark'))
         if idx >= 0:
             self._theme_combo.setCurrentIndex(idx)
+        self._theme_combo.currentIndexChanged.connect(self._on_theme_preview)
         form.addRow("App theme:", self._theme_combo)
         vbox.addWidget(grp)
 
@@ -735,6 +738,16 @@ class SettingsDialog(QDialog):
     def _check_now(self):
         from paparaz.utils.updater import check_for_updates_manual
         check_for_updates_manual(parent=self)
+
+    def _on_theme_preview(self):
+        """Live-preview the chosen theme: re-style this dialog and the editor."""
+        theme_id = self._theme_combo.currentData()
+        if not theme_id:
+            return
+        theme = get_theme(theme_id)
+        self.setStyleSheet(build_dialog_qss(theme) + combo_arrow_css())
+        if self.parent() and hasattr(self.parent(), 'apply_app_theme'):
+            self.parent().apply_app_theme(theme_id)
 
     # -----------------------------------------------------------------------
     # Save

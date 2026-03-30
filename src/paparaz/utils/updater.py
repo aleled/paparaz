@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QMessageBox, QPushButton
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 
 _GITHUB_API_URL = (
     "https://api.github.com/repos/aleled/paparaz/releases/latest"

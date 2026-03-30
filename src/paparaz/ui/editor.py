@@ -40,6 +40,7 @@ class EditorWindow(QWidget):
     def __init__(self, screenshot: QPixmap, settings_manager=None, parent=None,
                  capture_window_title: str = "", capture_app_name: str = ""):
         super().__init__(parent)
+        self.setObjectName("editorRoot")
         self._settings_manager = settings_manager
         self._screenshot = screenshot
         self._drag_pos = None
@@ -79,9 +80,10 @@ class EditorWindow(QWidget):
 
         layout.addWidget(self._multi_toolbar.bottom_strip)
 
-        # Floating side panel — overlay on top of canvas, not in layout.
-        # Showing/hiding it never shifts the canvas.
-        self._side_panel = SidePanel(parent=self)
+        # Floating side panel — fully independent top-level window (parent=None).
+        # This prevents the editor's border-resize event filter from being installed
+        # on the panel's children, which would intercept header drag as a resize.
+        self._side_panel = SidePanel(parent=None)
         self._side_panel.hide()
         self._panel_initially_placed = False  # set True after first show + layout pass
 
@@ -165,7 +167,8 @@ class EditorWindow(QWidget):
         self._side_panel.shadow_color_changed.connect(self._canvas.set_shadow_color)
         self._side_panel.shadow_offset_x_changed.connect(self._canvas.set_shadow_offset_x)
         self._side_panel.shadow_offset_y_changed.connect(self._canvas.set_shadow_offset_y)
-        self._side_panel.shadow_blur_changed.connect(self._canvas.set_shadow_blur)
+        self._side_panel.shadow_blur_x_changed.connect(self._canvas.set_shadow_blur_x)
+        self._side_panel.shadow_blur_y_changed.connect(self._canvas.set_shadow_blur_y)
         self._side_panel.opacity_changed.connect(self._canvas.set_opacity)
         self._side_panel.cap_style_changed.connect(self._canvas.set_cap_style)
         self._side_panel.join_style_changed.connect(self._canvas.set_join_style)
@@ -194,6 +197,11 @@ class EditorWindow(QWidget):
         # Side panel mode changes
         self._side_panel.mode_changed.connect(self._on_panel_mode_changed)
 
+        # Recent colors: load from settings + persist on change
+        if self._settings_manager:
+            self._side_panel.set_recent_colors(self._settings_manager.settings.recent_colors)
+        self._side_panel.recent_colors_changed.connect(self._on_recent_colors_changed)
+
         # Auto-save tool properties whenever any value changes
         for sig in (
             self._side_panel.fg_color_changed, self._side_panel.bg_color_changed,
@@ -203,7 +211,8 @@ class EditorWindow(QWidget):
             self._side_panel.dash_pattern_changed, self._side_panel.filled_toggled,
             self._side_panel.shadow_toggled, self._side_panel.shadow_color_changed,
             self._side_panel.shadow_offset_x_changed, self._side_panel.shadow_offset_y_changed,
-            self._side_panel.shadow_blur_changed, self._side_panel.pixel_size_changed,
+            self._side_panel.shadow_blur_x_changed, self._side_panel.shadow_blur_y_changed,
+            self._side_panel.pixel_size_changed,
             self._side_panel.fill_tolerance_changed,
             self._side_panel.number_size_changed, self._side_panel.number_text_color_changed,
             self._side_panel.stamp_selected, self._side_panel.stamp_size_changed,
@@ -373,6 +382,12 @@ class EditorWindow(QWidget):
         if mode == "hidden":
             self._side_panel.hide()
 
+    def _on_recent_colors_changed(self, colors: list):
+        """Persist recent colors to settings whenever the palette changes."""
+        if self._settings_manager:
+            self._settings_manager.settings.recent_colors = colors
+            self._settings_manager.save()
+
     def _show_tool_props(self, tool_type: ToolType, global_pos: QPoint):
         """Show the floating props panel with the given tool's sections."""
         self._side_panel.update_for_tool(tool_type)
@@ -401,7 +416,11 @@ class EditorWindow(QWidget):
         if "shadow_color" in props:     c._shadow.color = props["shadow_color"]
         if "shadow_offset_x" in props:  c._shadow.offset_x = float(props["shadow_offset_x"])
         if "shadow_offset_y" in props:  c._shadow.offset_y = float(props["shadow_offset_y"])
-        if "shadow_blur" in props:      c._shadow.blur_radius = float(props["shadow_blur"])
+        if "shadow_blur_x" in props:    c._shadow.blur_x = float(props["shadow_blur_x"])
+        if "shadow_blur_y" in props:    c._shadow.blur_y = float(props["shadow_blur_y"])
+        if "shadow_blur" in props and "shadow_blur_x" not in props:
+            c._shadow.blur_x = float(props["shadow_blur"])
+            c._shadow.blur_y = float(props["shadow_blur"])
         if "font_family" in props:      c._font_family = props["font_family"]
         if "font_size" in props:        c._font_size = int(props["font_size"])
         # Sync panel UI without firing signals
@@ -442,11 +461,11 @@ class EditorWindow(QWidget):
                 self.width() - self._close_btn_overlay.width() - m, m
             )
             self._close_btn_overlay.raise_()
-        # Place the floating side panel at the top-left of the canvas area on first show
+        # Place the floating side panel near the canvas on first show (screen coords)
         if not self._panel_initially_placed:
             self._panel_initially_placed = True
-            canvas_pos = self._canvas.mapTo(self, QPoint(0, 0))
-            self._side_panel.move(canvas_pos.x() + 4, canvas_pos.y() + 4)
+            canvas_global = self._canvas.mapToGlobal(QPoint(0, 0))
+            self._side_panel.move(canvas_global.x() + 4, canvas_global.y() + 4)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -461,15 +480,7 @@ class EditorWindow(QWidget):
         # Re-scan children so reparented buttons always have the border filter
         if getattr(self, "_border_filter_installed", False):
             self._install_border_filter()
-        # Keep floating side panel within editor bounds
-        if hasattr(self, "_side_panel"):
-            p = self._side_panel.pos()
-            pw = self._side_panel.width()
-            ph = self._side_panel.height()
-            x = max(0, min(p.x(), self.width() - pw))
-            y = max(0, min(p.y(), self.height() - ph))
-            if (x, y) != (p.x(), p.y()):
-                self._side_panel.move(x, y)
+        # Side panel is a free-floating top-level — no clamping needed
 
     def _on_text_edit_request(self, element):
         if isinstance(element, TextElement):
@@ -489,13 +500,12 @@ class EditorWindow(QWidget):
         from paparaz.ui.app_theme import get_theme, build_tool_qss, build_panel_qss
         from paparaz.ui.icons import combo_arrow_css
         theme = get_theme(theme_id)
-        # Apply to toolbar strip(s)
+        # Apply to all toolbar buttons (strips are already transparent)
         if hasattr(self, '_multi_toolbar'):
-            for strip in getattr(self._multi_toolbar, '_strips', []):
-                strip.setStyleSheet(build_tool_qss(theme))
-        # Apply to side panel
+            self._multi_toolbar.apply_theme(theme)
+        # Apply to side panel (also stores theme for paintEvent)
         if hasattr(self, '_side_panel'):
-            self._side_panel.setStyleSheet(build_panel_qss(theme) + combo_arrow_css())
+            self._side_panel.apply_theme(theme)
         # Apply background color to editor root
         bg = theme["bg1"]
         self.setStyleSheet(f"QWidget#editorRoot {{ background: {bg}; }}")
@@ -530,7 +540,8 @@ class EditorWindow(QWidget):
         c._shadow.color = preset.shadow_color
         c._shadow.offset_x = preset.shadow_offset_x
         c._shadow.offset_y = preset.shadow_offset_y
-        c._shadow.blur_radius = preset.shadow_blur
+        c._shadow.blur_x = preset.shadow_blur
+        c._shadow.blur_y = preset.shadow_blur
         c._font_family = preset.font_family
         c._font_size = preset.font_size
         # Refresh side panel
@@ -855,5 +866,9 @@ class EditorWindow(QWidget):
             self._save_tool_properties(self._current_tool_type)
         if self._settings_manager:
             self._settings_manager.save()
+        # Close the independent side panel (parent=None so it outlives us otherwise)
+        if hasattr(self, "_side_panel"):
+            self._side_panel.hide()
+            self._side_panel.deleteLater()
         self.closed.emit()
         super().closeEvent(event)

@@ -8,8 +8,30 @@ from paparaz.core.elements import (
     AnnotationElement, TextElement, NumberElement, StampElement,
     PenElement, BrushElement, LineElement, ArrowElement,
     RectElement, EllipseElement, MaskElement, ImageElement,
+    _rotate_point,
 )
 from paparaz.core.history import Command
+
+
+def _rot(pt: QPointF, cx: float, cy: float, cos_r: float, sin_r: float) -> QPointF:
+    """Rotate pt around (cx,cy) given pre-computed cos/sin."""
+    dx = pt.x() - cx
+    dy = pt.y() - cy
+    return QPointF(cx + dx * cos_r - dy * sin_r, cy + dx * sin_r + dy * cos_r)
+
+
+# For each handle index, which LOCAL point of orig_rect is the ANCHOR
+# (the point that must not drift in canvas space during resize).
+_ANCHOR_FN = {
+    0: lambda r: QPointF(r.right(),      r.bottom()),       # TL dragged → BR anchored
+    1: lambda r: QPointF(r.center().x(), r.bottom()),       # TC → BC
+    2: lambda r: QPointF(r.left(),       r.bottom()),       # TR → BL
+    3: lambda r: QPointF(r.right(),      r.center().y()),   # LM → RM
+    4: lambda r: QPointF(r.left(),       r.center().y()),   # RM → LM
+    5: lambda r: QPointF(r.right(),      r.top()),          # BL → TR
+    6: lambda r: QPointF(r.center().x(), r.top()),          # BC → TC
+    7: lambda r: QPointF(r.left(),       r.top()),          # BR → TL
+}
 
 # Handle index 8 is the rotation handle
 _ROTATION_HANDLE = 8
@@ -302,75 +324,137 @@ class SelectTool(BaseTool):
         self._orig_rotation = elem.rotation
 
     def _resize_element(self, pos: QPointF):
-        """Resize using absolute deltas from the press position (_drag_start).
-        _drag_start and _orig_* are never updated here — they are fixed anchors."""
+        """Resize the selected element.
+
+        All deltas are computed in canvas space from _drag_start (the fixed anchor
+        at the moment the drag began).  For rotated rect-based elements a two-step
+        correction keeps the OPPOSITE handle stationary in canvas space:
+
+          Step 1: convert canvas delta → element-local delta (inverse-rotate by R).
+          Step 2: after updating the edge(s), translate the rect so that the anchor
+                  point returns to its original canvas-space position.  This is needed
+                  because changing one edge shifts the rect's center, and since
+                  rotation is applied around that center, ALL canvas corners drift.
+
+        Line/Arrow endpoints are already in canvas coordinates and have no rect-center
+        dependency, so only the raw canvas delta is used for them.
+        """
         elem = self.canvas.selected_element
         if not elem:
             return
 
         h = self._handle_index
-        # Absolute delta from when the resize drag started
-        dx = pos.x() - self._drag_start.x()
-        dy = pos.y() - self._drag_start.y()
+        cdx = pos.x() - self._drag_start.x()   # canvas-space delta
+        cdy = pos.y() - self._drag_start.y()
         MIN_SIZE = 10
 
-        # ---- Rotation handle (index 8) — works for all rotatable elements ----
+        # ---- Rotation handle ----
         if h == _ROTATION_HANDLE:
             center = elem.bounding_rect().center()
-            # Angle from center to current mouse position, offset by 90° so
-            # the rotation handle at top == 0° (pointing up)
             angle = math.degrees(math.atan2(
-                pos.y() - center.y(),
-                pos.x() - center.x(),
+                pos.y() - center.y(), pos.x() - center.x()
             )) + 90.0
-            # Snap to 15° increments when Shift is held (we can't check that here,
-            # so we'll just apply directly; shift-snap can be added later)
             elem.rotation = angle % 360.0
             return
 
-        # ---- Elements with a rect attribute (Rect, Ellipse, Mask, Image, Text, Stamp) ----
+        # ---- Rect-based elements ----
         if hasattr(elem, "rect") and not isinstance(elem, (LineElement, ArrowElement)):
             orig = self._orig_rect
-            left   = orig.left()
-            top    = orig.top()
-            right  = orig.right()
-            bottom = orig.bottom()
+            R    = self._orig_rotation
 
-            if h in (0, 3, 5):   left   = orig.left()   + dx
-            if h in (2, 4, 7):   right  = orig.right()  + dx
-            if h in (0, 1, 2):   top    = orig.top()    + dy
-            if h in (5, 6, 7):   bottom = orig.bottom() + dy
+            # Step 1: convert canvas delta to element-local delta (inverse rotate by R).
+            if R:
+                rad   = math.radians(R)
+                cos_r = math.cos(rad)
+                sin_r = math.sin(rad)
+                dx =  cdx * cos_r + cdy * sin_r   # dot with local-X axis
+                dy = -cdx * sin_r + cdy * cos_r   # dot with local-Y axis
+            else:
+                dx, dy = cdx, cdy
 
-            # Clamp to minimum size without flipping sides
+            # Apply local delta to the edges that this handle controls.
+            left   = orig.left()   + (dx if h in (0, 3, 5) else 0)
+            right  = orig.right()  + (dx if h in (2, 4, 7) else 0)
+            top    = orig.top()    + (dy if h in (0, 1, 2) else 0)
+            bottom = orig.bottom() + (dy if h in (5, 6, 7) else 0)
+
+            # Clamp so the rect never flips or collapses.
             if right - left < MIN_SIZE:
-                if h in (0, 3, 5):
-                    left = right - MIN_SIZE   # left dragged past right
-                else:
-                    right = left + MIN_SIZE   # right dragged past left
+                if h in (0, 3, 5): left  = right - MIN_SIZE
+                else:              right = left  + MIN_SIZE
             if bottom - top < MIN_SIZE:
-                if h in (0, 1, 2):
-                    top = bottom - MIN_SIZE   # top dragged past bottom
-                else:
-                    bottom = top + MIN_SIZE
+                if h in (0, 1, 2): top    = bottom - MIN_SIZE
+                else:              bottom = top    + MIN_SIZE
 
-            elem.rect = QRectF(left, top, right - left, bottom - top)
+            new_rect = QRectF(left, top, right - left, bottom - top)
+
+            # Step 2: anchor correction.
+            # Changing an edge shifts the rect center in local space.  Because the
+            # element is drawn by rotating around its center, ALL canvas-space corners
+            # move — even the ones we didn't drag.  We correct by translating new_rect
+            # so that the anchor (opposite) local point keeps the same canvas position.
+            if R and h in _ANCHOR_FN:
+                cos_r = math.cos(math.radians(R))
+                sin_r = math.sin(math.radians(R))
+                anchor_local = _ANCHOR_FN[h](orig)       # same local pos in old & new rect
+                oc = orig.center()
+                nc = new_rect.center()
+                # Canvas pos of anchor before and after the edge change
+                before = _rot(anchor_local, oc.x(), oc.y(), cos_r, sin_r)
+                after  = _rot(anchor_local, nc.x(), nc.y(), cos_r, sin_r)
+                # Shift the rect to cancel the drift
+                new_rect = new_rect.translated(
+                    before.x() - after.x(),
+                    before.y() - after.y(),
+                )
+
+            elem.rect = new_rect
             return
 
-        # ---- Line / Arrow: drag endpoints absolutely ----
+        # ---- Line / Arrow ----
         if isinstance(elem, (LineElement, ArrowElement)):
-            if h in (0, 3):
-                elem.start = QPointF(self._orig_start.x() + dx, self._orig_start.y() + dy)
-            elif h in (2, 4, 7):
-                elem.end = QPointF(self._orig_end.x() + dx, self._orig_end.y() + dy)
-            elif h == 1:
-                elem.start = QPointF(self._orig_start.x(), self._orig_start.y() + dy)
-            elif h == 6:
-                elem.end = QPointF(self._orig_end.x(), self._orig_end.y() + dy)
-            elif h == 5:
-                elem.start = QPointF(self._orig_start.x() + dx, self._orig_start.y() + dy)
+            R = self._orig_rotation
+            if R:
+                # Screen-space approach: move one screen-space endpoint by the canvas
+                # delta, keep the other endpoint's screen position fixed.
+                # Key identity: the rotation center = midpoint(start,end) always maps
+                # to itself on screen, so new_canvas_center = midpoint(new_screen_ss, new_screen_se).
+                rad   = math.radians(R)
+                cos_r = math.cos(rad)
+                sin_r = math.sin(rad)
+                oc_x = (self._orig_start.x() + self._orig_end.x()) / 2
+                oc_y = (self._orig_start.y() + self._orig_end.y()) / 2
+                # Screen positions of original endpoints
+                ss = _rot(self._orig_start, oc_x, oc_y,  cos_r, sin_r)
+                se = _rot(self._orig_end,   oc_x, oc_y,  cos_r, sin_r)
+                # Which endpoint does this handle move?
+                if h in (0, 1, 3, 5):
+                    new_ss = QPointF(ss.x() + cdx, ss.y() + cdy)
+                    new_se = se
+                else:  # (2, 4, 6, 7)
+                    new_ss = ss
+                    new_se = QPointF(se.x() + cdx, se.y() + cdy)
+                # New rotation center = midpoint of new screen positions
+                nc_x = (new_ss.x() + new_se.x()) / 2
+                nc_y = (new_ss.y() + new_se.y()) / 2
+                # Inverse-rotate screen positions around new center to get canvas coords
+                elem.start = _rot(new_ss, nc_x, nc_y, cos_r, -sin_r)
+                elem.end   = _rot(new_se, nc_x, nc_y, cos_r, -sin_r)
+            else:
+                # No rotation: direct canvas-space delta on endpoints
+                if h in (0, 3):
+                    elem.start = QPointF(self._orig_start.x() + cdx, self._orig_start.y() + cdy)
+                elif h in (2, 4, 7):
+                    elem.end = QPointF(self._orig_end.x() + cdx, self._orig_end.y() + cdy)
+                elif h == 1:
+                    elem.start = QPointF(self._orig_start.x(), self._orig_start.y() + cdy)
+                elif h == 6:
+                    elem.end = QPointF(self._orig_end.x(), self._orig_end.y() + cdy)
+                elif h == 5:
+                    elem.start = QPointF(self._orig_start.x() + cdx, self._orig_start.y() + cdy)
             return
 
-        # ---- Pen / Brush: scale all points relative to original bounding rect ----
+        # ---- Pen / Brush: scale all points proportionally ----
         if isinstance(elem, (PenElement, BrushElement)) and self._orig_points:
             xs = [p.x() for p in self._orig_points]
             ys = [p.y() for p in self._orig_points]
@@ -380,33 +464,55 @@ class SelectTool(BaseTool):
             if orig_br.width() < 1 or orig_br.height() < 1:
                 return
 
-            left   = orig_br.left()
-            top    = orig_br.top()
-            right  = orig_br.right()
-            bottom = orig_br.bottom()
+            R = self._orig_rotation
+            if R:
+                rad   = math.radians(R)
+                cos_r = math.cos(rad)
+                sin_r = math.sin(rad)
+                # Convert canvas delta into element-local frame (inverse-rotate by R)
+                dx =  cdx * cos_r + cdy * sin_r
+                dy = -cdx * sin_r + cdy * cos_r
+            else:
+                dx, dy = cdx, cdy
+                cos_r = sin_r = 0.0
 
-            if h in (0, 3, 5):   left   = orig_br.left()   + dx
-            if h in (2, 4, 7):   right  = orig_br.right()  + dx
-            if h in (0, 1, 2):   top    = orig_br.top()    + dy
-            if h in (5, 6, 7):   bottom = orig_br.bottom() + dy
-
-            new_w = right - left
-            new_h = bottom - top
+            left   = orig_br.left()   + (dx if h in (0, 3, 5) else 0)
+            right  = orig_br.right()  + (dx if h in (2, 4, 7) else 0)
+            top    = orig_br.top()    + (dy if h in (0, 1, 2) else 0)
+            bottom = orig_br.bottom() + (dy if h in (5, 6, 7) else 0)
+            new_w  = right - left
+            new_h  = bottom - top
             if new_w < MIN_SIZE or new_h < MIN_SIZE:
-                return  # hold at current size, don't flip or collapse
+                return
 
             sx = new_w / orig_br.width()
             sy = new_h / orig_br.height()
-            elem.points = [
+            scaled = [
                 QPointF(left + (p.x() - orig_br.left()) * sx,
                         top  + (p.y() - orig_br.top())  * sy)
                 for p in self._orig_points
             ]
+
+            # Anchor correction: the anchor corner drifts in canvas space when the
+            # bounding-rect center shifts (rotation is applied around that center).
+            # Translate all scaled points so the anchor stays at its original canvas pos.
+            if R and h in _ANCHOR_FN:
+                new_br = QRectF(left, top, new_w, new_h)
+                anchor = _ANCHOR_FN[h](orig_br)   # same logical corner in old & new br
+                oc = orig_br.center()
+                nc = new_br.center()
+                before = _rot(anchor, oc.x(), oc.y(), cos_r, sin_r)
+                after  = _rot(anchor, nc.x(), nc.y(), cos_r, sin_r)
+                tx = before.x() - after.x()
+                ty = before.y() - after.y()
+                scaled = [QPointF(p.x() + tx, p.y() + ty) for p in scaled]
+
+            elem.points = scaled
             return
 
-        # ---- Number: resize circle from corner handles ----
+        # ---- Number marker ----
         if isinstance(elem, NumberElement) and self._orig_size is not None:
             if h in (0, 2, 5, 7):
-                diag = (dx + dy) / 2
+                diag = (cdx + cdy) / 2
                 elem.size = max(16, self._orig_size + diag)
             return

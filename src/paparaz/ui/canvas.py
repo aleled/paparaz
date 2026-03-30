@@ -104,7 +104,8 @@ class AnnotationCanvas(QWidget):
                 enabled=self._shadow.enabled,
                 offset_x=self._shadow.offset_x,
                 offset_y=self._shadow.offset_y,
-                blur_radius=self._shadow.blur_radius,
+                blur_x=self._shadow.blur_x,
+                blur_y=self._shadow.blur_y,
                 color=self._shadow.color,
             ),
             cap_style=self._cap_style,
@@ -213,11 +214,29 @@ class AnnotationCanvas(QWidget):
             self.update()
 
     def set_shadow_blur(self, blur: float):
-        self._shadow.blur_radius = blur
+        self._shadow.blur_x = blur
+        self._shadow.blur_y = blur
         if self.selected_element:
-            old = self.selected_element.style.shadow.blur_radius
-            self.selected_element.style.shadow.blur_radius = blur
-            self._record_shadow_attr("Shadow blur", "blur_radius", old, blur)
+            old_x = self.selected_element.style.shadow.blur_x
+            old_y = self.selected_element.style.shadow.blur_y
+            self.selected_element.style.shadow.blur_x = blur
+            self.selected_element.style.shadow.blur_y = blur
+            self._record_shadow_attr("Shadow blur X", "blur_x", old_x, blur)
+            self._record_shadow_attr("Shadow blur Y", "blur_y", old_y, blur)
+            self.update()
+
+    def set_shadow_blur_x(self, v: float):
+        self._shadow.blur_x = v
+        elem = self.selected_element
+        if elem:
+            elem.style.shadow.blur_x = v
+            self.update()
+
+    def set_shadow_blur_y(self, v: float):
+        self._shadow.blur_y = v
+        elem = self.selected_element
+        if elem:
+            elem.style.shadow.blur_y = v
             self.update()
 
     def set_opacity(self, opacity: float):

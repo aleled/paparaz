@@ -55,13 +55,16 @@ class AppSettings:
     tray_icon_color: str = "#E53935"   # red default
     shadow_default_offset_x: float = 3.0
     shadow_default_offset_y: float = 3.0
-    shadow_default_blur: float = 5.0
+    shadow_default_blur_x: float = 5.0
+    shadow_default_blur_y: float = 5.0
     auto_check_updates: bool = True
     # File naming
     filename_pattern: str = "{yyyy}-{MM}-{dd}_{HH}-{mm}-{ss}"
     subfolder_pattern: str = ""
     save_counter: int = 1          # persistent auto-increment counter
     auto_save: bool = False        # True = save silently, False = show dialog
+    # Recent colors (up to 16, hex strings)
+    recent_colors: list = field(default_factory=list)
 
 
 class SettingsManager:
@@ -101,11 +104,16 @@ class SettingsManager:
                    "recent_captures", "max_recent", "zoom_presets",
                    "default_theme_preset", "app_theme", "tray_icon_color",
                    "shadow_default_offset_x", "shadow_default_offset_y",
-                   "shadow_default_blur", "auto_check_updates",
+                   "shadow_default_blur_x", "shadow_default_blur_y",
+                   "auto_check_updates",
                    "filename_pattern", "subfolder_pattern",
-                   "save_counter", "auto_save"):
+                   "save_counter", "auto_save", "recent_colors"):
             if k in data:
                 setattr(self.settings, k, data[k])
+        # Backward compatibility: migrate old single blur field to both axes
+        if "shadow_default_blur" in data and "shadow_default_blur_x" not in data:
+            self.settings.shadow_default_blur_x = float(data["shadow_default_blur"])
+            self.settings.shadow_default_blur_y = float(data["shadow_default_blur"])
         if "tool_properties" in data and isinstance(data["tool_properties"], dict):
             self.settings.tool_properties = data["tool_properties"]
 

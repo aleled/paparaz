@@ -32,14 +32,15 @@ from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QFont, QPainterPath,
     QPolygonF, QTransform, QFontMetrics, QPixmap, QImage,
 )
-def _scale_blur(pix: "QPixmap", radius: float) -> "QPixmap":
-    """Approximate Gaussian blur via three-pass downscale/upscale (always works)."""
-    w, h = pix.width(), pix.height()
-    r = max(1, int(radius))
+def _scale_blur(pix: "QPixmap", rx: float, ry: float) -> "QPixmap":
+    """Approximate directional Gaussian blur via three-pass downscale/upscale.
+    rx controls horizontal spread, ry controls vertical spread."""
+    rx_i = max(1, int(rx))
+    ry_i = max(1, int(ry))
     result = pix
     for _ in range(3):
-        sw = max(1, result.width()  - r * 2)
-        sh = max(1, result.height() - r * 2)
+        sw = max(1, result.width()  - rx_i * 2)
+        sh = max(1, result.height() - ry_i * 2)
         small = result.scaled(
             sw, sh,
             Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -92,7 +93,8 @@ class Shadow:
     enabled: bool = False
     offset_x: float = 3.0
     offset_y: float = 3.0
-    blur_radius: float = 5.0
+    blur_x: float = 5.0     # horizontal blur spread
+    blur_y: float = 5.0     # vertical blur spread
     color: str = "#80000000"
 
 
@@ -259,6 +261,8 @@ class AnnotationElement:
         raise NotImplementedError
 
     def _make_pen(self) -> QPen:
+        if self.style.line_width <= 0:
+            return QPen(Qt.PenStyle.NoPen)
         pen = QPen(QColor(self.style.foreground_color), self.style.line_width)
         pen.setCapStyle(CAP_STYLES.get(self.style.cap_style, Qt.PenCapStyle.RoundCap))
         pen.setJoinStyle(JOIN_STYLES.get(self.style.join_style, Qt.PenJoinStyle.RoundJoin))
@@ -271,13 +275,14 @@ class AnnotationElement:
             paint_fn(painter)
             return
 
-        blur_r = max(0.0, self.style.shadow.blur_radius)
+        blur_rx = max(0.0, self.style.shadow.blur_x)
+        blur_ry = max(0.0, self.style.shadow.blur_y)
         ox = self.style.shadow.offset_x
         oy = self.style.shadow.offset_y
         shadow_color = QColor(self.style.shadow.color)
 
         # Render element into an offscreen pixmap using the shadow colour
-        pad = max(8, int(blur_r * 2.5) + 4)
+        pad = max(8, int(max(blur_rx, blur_ry) * 2.5) + 4)
         bounds = self.bounding_rect()
         pix_w = max(4, int(bounds.width())  + pad * 2)
         pix_h = max(4, int(bounds.height()) + pad * 2)
@@ -299,8 +304,8 @@ class AnnotationElement:
         sp.end()
 
         # Blur via repeated downscale/upscale (guaranteed to work on all platforms)
-        if blur_r >= 1.0:
-            shadow_pix = _scale_blur(shadow_pix, blur_r)
+        if blur_rx >= 1.0 or blur_ry >= 1.0:
+            shadow_pix = _scale_blur(shadow_pix, max(blur_rx, 1.0), max(blur_ry, 1.0))
 
         # Composite blurred shadow behind main element
         painter.save()
@@ -331,7 +336,8 @@ class AnnotationElement:
                     "enabled": self.style.shadow.enabled,
                     "offset_x": self.style.shadow.offset_x,
                     "offset_y": self.style.shadow.offset_y,
-                    "blur_radius": self.style.shadow.blur_radius,
+                    "blur_x": self.style.shadow.blur_x,
+                    "blur_y": self.style.shadow.blur_y,
                     "color": self.style.shadow.color,
                 },
             },
@@ -418,18 +424,41 @@ class BrushElement(PenElement):
 
 
 class HighlightElement(PenElement):
-    """Highlighter marker stroke — flat-cap, wide, semi-transparent (alpha from color)."""
+    """Highlighter marker stroke.
+
+    Uses QPainter.CompositionMode_Multiply so the highlight colour multiplies
+    with whatever is underneath: white paper stays the highlight colour, dark
+    text stays dark, and the background is always fully visible.  This is the
+    same optical effect as a real fluorescent marker on paper.
+    """
 
     def __init__(self, style: Optional[ElementStyle] = None):
         super().__init__(style)
         self.element_type = ElementType.HIGHLIGHT
 
     def _make_pen(self) -> QPen:
-        pen = QPen(QColor(self.style.foreground_color), self.style.line_width)
+        # Use full-opacity colour; visual transparency comes from Multiply blend.
+        color = QColor(self.style.foreground_color)
+        color.setAlpha(255)
+        pen = QPen(color, self.style.line_width)
         pen.setCapStyle(Qt.PenCapStyle.FlatCap)
         pen.setJoinStyle(Qt.PenJoinStyle.BevelJoin)
         pen.setStyle(Qt.PenStyle.SolidLine)
         return pen
+
+    def _paint_stroke(self, painter: QPainter):
+        """Override to set Multiply composition mode for the actual stroke."""
+        if len(self.points) < 2:
+            return
+        old_mode = painter.compositionMode()
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
+        painter.setPen(self._make_pen())
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        path = QPainterPath(self.points[0])
+        for p in self.points[1:]:
+            path.lineTo(p)
+        painter.drawPath(path)
+        painter.setCompositionMode(old_mode)
 
 
 class LineElement(AnnotationElement):
@@ -549,7 +578,9 @@ class RectElement(AnnotationElement):
     def _paint_rect(self, painter: QPainter):
         painter.setPen(self._make_pen())
         if self.filled:
-            painter.setBrush(QColor(self.style.background_color))
+            c = QColor(self.style.background_color)
+            c.setAlpha(255)
+            painter.setBrush(c)
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(self.rect.normalized())
@@ -606,7 +637,9 @@ class EllipseElement(AnnotationElement):
     def _paint_ellipse(self, painter: QPainter):
         painter.setPen(self._make_pen())
         if self.filled:
-            painter.setBrush(QColor(self.style.background_color))
+            c = QColor(self.style.background_color)
+            c.setAlpha(255)
+            painter.setBrush(c)
         else:
             painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(self.rect.normalized())

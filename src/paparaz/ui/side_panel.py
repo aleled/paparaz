@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPixmap, QIcon, QPalette, QPe
 
 from paparaz.tools.base import ToolType
 from paparaz.ui.icons import get_icon, combo_arrow_css
+from paparaz.ui.color_palette import RecentColorsPalette
 from paparaz.core.elements import (
     AnnotationElement, TextElement, RectElement, EllipseElement,
     MaskElement, NumberElement, ElementType, HighlightElement,
@@ -137,7 +138,8 @@ class SidePanel(QWidget):
     shadow_color_changed = Signal(str)
     shadow_offset_x_changed = Signal(float)
     shadow_offset_y_changed = Signal(float)
-    shadow_blur_changed = Signal(float)
+    shadow_blur_x_changed = Signal(float)
+    shadow_blur_y_changed = Signal(float)
     rotation_changed = Signal(float)
     opacity_changed = Signal(float)
     cap_style_changed = Signal(str)
@@ -159,13 +161,21 @@ class SidePanel(QWidget):
     text_bg_enabled_changed = Signal(bool)
     text_bg_color_changed = Signal(str)
     mode_changed = Signal(str)   # 'auto', 'pinned', 'hidden'
+    recent_colors_changed = Signal(list)  # emitted when palette changes
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("sidePanel")
+        # Make a true top-level window so it can float outside the editor
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Window
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setStyleSheet(PANEL_STYLE + combo_arrow_css())
         self.setFixedWidth(PANEL_WIDTH)
-        self.resize(PANEL_WIDTH, 500)  # default floating height
+        self.resize(PANEL_WIDTH, 500)
         # Floating overlay: must own its background paint explicitly
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
@@ -190,6 +200,7 @@ class SidePanel(QWidget):
         self._loading_element = False
 
         scroll = QScrollArea(self)
+        self._scroll = scroll
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{border:none;background:#1a1a2e;}")
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -200,6 +211,7 @@ class SidePanel(QWidget):
         vp.setPalette(vp_pal)
         vp.setAutoFillBackground(True)
         sw = QWidget()
+        self._scroll_widget = sw
         sw_pal = sw.palette()
         sw_pal.setColor(QPalette.ColorRole.Window, QColor("#1a1a2e"))
         sw.setPalette(sw_pal)
@@ -269,19 +281,18 @@ class SidePanel(QWidget):
         self._edit_banner.hide()
         self._layout.addWidget(self._edit_banner)
 
-        # --- COLOR ---
+        # ─── COLOR ───────────────────────────────────────────────────────
         color_layout = QVBoxLayout()
-        color_layout.setSpacing(1)
+        color_layout.setSpacing(2)
         color_layout.setContentsMargins(0, 0, 0, 0)
         color_layout.addWidget(self._section_title("COLOR"))
         cr = QHBoxLayout()
         cr.setSpacing(4)
-        self._fg_btn = self._color_btn(self._fg_color, self._pick_fg_color, "Fg")
-        self._bg_btn = self._color_btn(self._bg_color, self._pick_bg_color, "Bg")
+        self._fg_btn = self._color_btn(self._fg_color, self._pick_fg_color, "Fg color (click)")
+        self._bg_btn = self._color_btn(self._bg_color, self._pick_bg_color, "Bg / fill color (click)")
         cr.addWidget(QLabel("Fg"))
         cr.addWidget(self._fg_btn)
-        cr.addSpacing(4)
-        # Bg swatch wrapped so it can be hidden per-tool
+        cr.addSpacing(8)
         self._bg_color_container = QWidget()
         bg_sub = QHBoxLayout(self._bg_color_container)
         bg_sub.setContentsMargins(0, 0, 0, 0)
@@ -291,60 +302,71 @@ class SidePanel(QWidget):
         cr.addWidget(self._bg_color_container)
         cr.addStretch()
         color_layout.addLayout(cr)
+        self._recent_palette = RecentColorsPalette(parent=self)
+        self._recent_palette.fg_requested.connect(self._apply_palette_fg)
+        self._recent_palette.bg_requested.connect(self._apply_palette_bg)
+        self._recent_palette.changed.connect(lambda: self.recent_colors_changed.emit(self._recent_palette.get_colors()))
+        color_layout.addWidget(self._recent_palette)
         self._color_widget = self._wrap_layout(color_layout)
         self._layout.addWidget(self._color_widget)
 
-        # --- STROKE ---
-        self._stroke_title = self._section_title("STROKE")
-        self._layout.addWidget(self._stroke_title)
-        self._width_slider, self._width_label, self._stroke_row = self._make_slider_row("Width", 1, 50, 3, "px")
-        self._layout.addWidget(self._stroke_row)
+        # ─── STROKE (width + line style merged) ──────────────────────────
+        stroke_layout = QVBoxLayout()
+        stroke_layout.setSpacing(2)
+        stroke_layout.setContentsMargins(0, 0, 0, 0)
+        stroke_layout.addWidget(self._section_title("STROKE"))
+        self._width_slider, self._width_label, self._stroke_row = self._make_slider_row("Width", 0, 50, 3, "px")
         self._width_slider.valueChanged.connect(self._on_line_width)
-
-        # --- LINE STYLE ---
-        self._line_style_title = self._section_title("LINE")
-        self._layout.addWidget(self._line_style_title)
-        ls = QVBoxLayout()
-        ls.setSpacing(1)
+        stroke_layout.addWidget(self._stroke_row)
+        # Dash / Cap / Join — shown only when line_style is enabled for the tool
+        ls_inner = QVBoxLayout()
+        ls_inner.setSpacing(2)
+        ls_inner.setContentsMargins(0, 0, 0, 0)
         self._dash_combo = self._make_combo([("Solid","solid"),("Dash","dash"),("Dot","dot"),("Dash·Dot","dashdot")])
         self._dash_combo.currentIndexChanged.connect(lambda i: self._emit_if_not_loading(self.dash_pattern_changed, self._dash_combo.currentData()))
-        ls.addWidget(self._dash_combo)
+        ls_inner.addWidget(self._dash_combo)
         r2 = QHBoxLayout()
-        r2.setSpacing(2)
-        self._cap_combo = self._make_combo([("R","round"),("S","square"),("F","flat")])
-        self._cap_combo.setToolTip("Cap: Round / Square / Flat")
+        r2.setSpacing(3)
+        self._cap_combo = self._make_combo([("Round","round"),("Square","square"),("Flat","flat")])
+        self._cap_combo.setToolTip("Line cap style")
         self._cap_combo.currentIndexChanged.connect(lambda i: self._emit_if_not_loading(self.cap_style_changed, self._cap_combo.currentData()))
-        self._join_combo = self._make_combo([("R","round"),("B","bevel"),("M","miter")])
-        self._join_combo.setToolTip("Join: Round / Bevel / Miter")
+        self._join_combo = self._make_combo([("Round","round"),("Bevel","bevel"),("Miter","miter")])
+        self._join_combo.setToolTip("Line join style")
         self._join_combo.currentIndexChanged.connect(lambda i: self._emit_if_not_loading(self.join_style_changed, self._join_combo.currentData()))
         r2.addWidget(QLabel("Cap"))
         r2.addWidget(self._cap_combo)
+        r2.addSpacing(4)
         r2.addWidget(QLabel("Join"))
         r2.addWidget(self._join_combo)
-        ls.addLayout(r2)
-        self._line_style_widget = self._wrap_layout(ls)
-        self._layout.addWidget(self._line_style_widget)
+        ls_inner.addLayout(r2)
+        self._line_style_widget = self._wrap_layout(ls_inner)
+        stroke_layout.addWidget(self._line_style_widget)
+        self._stroke_widget = self._wrap_layout(stroke_layout)
+        # Title alias so update_for_tool can toggle the whole stroke section
+        self._stroke_title = self._section_title("")   # placeholder — hidden by stroke_widget visibility
+        self._line_style_title = self._section_title("")  # placeholder
+        self._layout.addWidget(self._stroke_widget)
 
-        # --- FILL ---
+        # ─── FILL ────────────────────────────────────────────────────────
         self._fill_title = self._section_title("FILL")
         self._layout.addWidget(self._fill_title)
-        self._filled_check = QCheckBox("Filled")
+        self._filled_check = QCheckBox("Filled shape")
         self._filled_check.toggled.connect(lambda v: self._emit_if_not_loading(self.filled_toggled, v))
         self._fill_widget = self._wrap_widget(self._filled_check)
         self._layout.addWidget(self._fill_widget)
 
-        # --- FLOOD FILL TOLERANCE ---
+        # ─── FLOOD FILL TOLERANCE ─────────────────────────────────────────
         self._fill_tol_title = self._section_title("FLOOD FILL")
         self._layout.addWidget(self._fill_tol_title)
         self._tol_slider, self._tol_label, self._fill_tol_widget = self._make_slider_row("Tol", 0, 100, 15, "%")
         self._tol_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.fill_tolerance_changed, v))
         self._layout.addWidget(self._fill_tol_widget)
 
-        # --- TEXT ---
+        # ─── TEXT ────────────────────────────────────────────────────────
         self._text_title = self._section_title("TEXT")
         self._layout.addWidget(self._text_title)
         tl = QVBoxLayout()
-        tl.setSpacing(1)
+        tl.setSpacing(2)
         self._font_combo = QFontComboBox()
         self._font_combo.setCurrentFont(QFont("Arial"))
         self._font_combo.currentFontChanged.connect(lambda f: self._emit_if_not_loading(self.font_family_changed, f.family()))
@@ -352,8 +374,6 @@ class SidePanel(QWidget):
         self._font_size_slider, self._font_size_label, fs_row = self._make_slider_row("Size", 6, 72, 14, "pt")
         tl.addWidget(fs_row)
         self._font_size_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.font_size_changed, v))
-
-        # Format buttons row
         fr = QHBoxLayout()
         fr.setSpacing(2)
         self._bold_btn = self._fmt_btn("bold", "Bold")
@@ -368,8 +388,6 @@ class SidePanel(QWidget):
             fr.addWidget(b)
         fr.addStretch()
         tl.addLayout(fr)
-
-        # Align + direction row
         ar = QHBoxLayout()
         ar.setSpacing(2)
         self._align_group = QButtonGroup(self)
@@ -382,11 +400,11 @@ class SidePanel(QWidget):
             b.toggled.connect(lambda checked, val=v: self._emit_if_not_loading(self.text_alignment_changed, val) if checked else None)
             ar.addWidget(b)
         self._align_btns["left"].setChecked(True)
-        ar.addSpacing(4)
+        ar.addSpacing(6)
         self._dir_group = QButtonGroup(self)
         self._dir_group.setExclusive(True)
-        self._ltr_btn = self._fmt_btn("ltr", "LTR")
-        self._rtl_btn = self._fmt_btn("rtl", "RTL")
+        self._ltr_btn = self._fmt_btn("ltr", "Left-to-right")
+        self._rtl_btn = self._fmt_btn("rtl", "Right-to-left")
         self._dir_group.addButton(self._ltr_btn)
         self._dir_group.addButton(self._rtl_btn)
         self._ltr_btn.setChecked(True)
@@ -396,13 +414,11 @@ class SidePanel(QWidget):
         ar.addWidget(self._rtl_btn)
         ar.addStretch()
         tl.addLayout(ar)
-
-        # Text bg
         tbr = QHBoxLayout()
         tbr.setSpacing(3)
         self._text_bg_check = QCheckBox("Bg")
         self._text_bg_check.toggled.connect(lambda v: self._emit_if_not_loading(self.text_bg_enabled_changed, v))
-        self._text_bg_btn = self._color_btn(self._text_bg_color, self._pick_text_bg_color, "")
+        self._text_bg_btn = self._color_btn(self._text_bg_color, self._pick_text_bg_color, "Text background color")
         tbr.addWidget(self._text_bg_check)
         tbr.addWidget(self._text_bg_btn)
         tbr.addStretch()
@@ -410,19 +426,12 @@ class SidePanel(QWidget):
         self._text_widget = self._wrap_layout(tl)
         self._layout.addWidget(self._text_widget)
 
-        # --- MASK ---
-        self._mask_title = self._section_title("PIXELATE")
-        self._layout.addWidget(self._mask_title)
-        self._pixel_slider, self._pixel_label, self._mask_widget = self._make_slider_row("Block", 2, 50, 10, "px")
-        self._pixel_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.pixel_size_changed, v))
-        self._layout.addWidget(self._mask_widget)
-
-        # --- NUMBER ---
+        # ─── MARKER (Numbering) ───────────────────────────────────────────
         self._number_title = self._section_title("MARKER")
         self._layout.addWidget(self._number_title)
         nl = QVBoxLayout()
-        nl.setSpacing(1)
-        self._num_size_slider, self._num_size_label, ns_w = self._make_slider_row("Size", 16, 80, 28, "px")
+        nl.setSpacing(2)
+        self._num_size_slider, self._num_size_label, ns_w = self._make_slider_row("Size", 16, 80, 16, "px")
         self._num_size_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.number_size_changed, float(v)))
         nl.addWidget(ns_w)
         self._num_font_combo = QFontComboBox()
@@ -431,20 +440,26 @@ class SidePanel(QWidget):
         nl.addWidget(self._num_font_combo)
         ntc = QHBoxLayout()
         ntc.setSpacing(3)
-        ntc.addWidget(QLabel("Color"))
-        self._num_text_color_btn = self._color_btn(self._num_text_color, self._pick_num_text_color, "")
+        ntc.addWidget(QLabel("Text color"))
+        self._num_text_color_btn = self._color_btn(self._num_text_color, self._pick_num_text_color, "Number text color")
         ntc.addWidget(self._num_text_color_btn)
         ntc.addStretch()
         nl.addLayout(ntc)
         self._number_widget = self._wrap_layout(nl)
         self._layout.addWidget(self._number_widget)
 
-        # --- STAMP ---
+        # ─── PIXELATE ────────────────────────────────────────────────────
+        self._mask_title = self._section_title("PIXELATE")
+        self._layout.addWidget(self._mask_title)
+        self._pixel_slider, self._pixel_label, self._mask_widget = self._make_slider_row("Block", 2, 50, 10, "px")
+        self._pixel_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.pixel_size_changed, v))
+        self._layout.addWidget(self._mask_widget)
+
+        # ─── STAMP ───────────────────────────────────────────────────────
         self._stamp_title = self._section_title("STAMP")
         self._layout.addWidget(self._stamp_title)
         sl = QVBoxLayout()
         sl.setSpacing(2)
-        # Stamp picker grid (flow layout with small icon buttons)
         from paparaz.ui.stamps import STAMPS, get_stamp_renderer
         self._stamp_group = QButtonGroup(self)
         self._stamp_group.setExclusive(True)
@@ -458,7 +473,6 @@ class SidePanel(QWidget):
             btn.setToolTip(sdata["label"])
             btn.setCheckable(True)
             btn.setFixedSize(32, 32)
-            # Render stamp to icon
             pix = QPixmap(28, 28)
             pix.fill(Qt.GlobalColor.transparent)
             rp = QPainter(pix)
@@ -474,53 +488,58 @@ class SidePanel(QWidget):
             btn.toggled.connect(lambda checked, s=sid: self._emit_if_not_loading(self.stamp_selected, s) if checked else None)
             if i == 0:
                 btn.setChecked(True)
-        # Pad last row
         if stamp_row:
             stamp_row.addStretch()
-        # Stamp size
         self._stamp_size_slider, self._stamp_size_label, ss_w = self._make_slider_row("Size", 24, 128, 48, "px")
         self._stamp_size_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.stamp_size_changed, float(v)))
         sl.addWidget(ss_w)
         self._stamp_widget = self._wrap_layout(sl)
         self._layout.addWidget(self._stamp_widget)
 
-        # --- EFFECTS ---
+        # ─── EFFECTS ─────────────────────────────────────────────────────
         self._effects_title = self._section_title("EFFECTS")
         self._layout.addWidget(self._effects_title)
         el = QVBoxLayout()
-        el.setSpacing(1)
+        el.setSpacing(2)
         self._opacity_slider, self._opacity_label, op_w = self._make_slider_row("Opac", 10, 100, 100, "%")
         self._opacity_slider.valueChanged.connect(self._on_opacity)
         el.addWidget(op_w)
-
         self._rotation_slider, self._rotation_label, rot_w = self._make_slider_row("Rot°", 0, 359, 0, "°")
         self._rotation_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.rotation_changed, float(v)))
         el.addWidget(rot_w)
 
+        # Shadow toggle
+        sh_row = QHBoxLayout()
+        sh_row.setSpacing(4)
         self._shadow_check = QCheckBox("Shadow")
         self._shadow_check.toggled.connect(lambda v: self._emit_if_not_loading(self.shadow_toggled, v))
-        el.addWidget(self._shadow_check)
+        sh_row.addWidget(self._shadow_check)
+        self._shadow_color_btn = self._color_btn("#000000", self._pick_shadow_color, "Shadow color")
+        sh_row.addWidget(self._shadow_color_btn)
+        sh_row.addStretch()
+        el.addLayout(sh_row)
 
-        # Shadow details — hidden until shadow checkbox is checked
+        # Shadow details — shown when shadow enabled
         sd = QVBoxLayout()
-        sd.setSpacing(1)
-        sd.setContentsMargins(0, 0, 0, 0)
-        scr = QHBoxLayout()
-        scr.setSpacing(3)
-        scr.addWidget(QLabel("Color"))
-        self._shadow_color_btn = self._color_btn("#000000", self._pick_shadow_color, "")
-        scr.addWidget(self._shadow_color_btn)
-        scr.addStretch()
-        sd.addLayout(scr)
-        self._shadow_ox_slider, self._shadow_ox_label, sox_w = self._make_slider_row("X", -20, 20, 3, "")
+        sd.setSpacing(2)
+        sd.setContentsMargins(6, 0, 0, 0)
+        # Offset row: X and Y side by side
+        off_row = QHBoxLayout()
+        off_row.setSpacing(4)
+        off_row.addWidget(QLabel("Off"))
+        self._shadow_ox_slider, self._shadow_ox_label, sox_w = self._make_slider_row("X", -30, 30, 3, "")
         self._shadow_ox_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.shadow_offset_x_changed, float(v)))
-        sd.addWidget(sox_w)
-        self._shadow_oy_slider, self._shadow_oy_label, soy_w = self._make_slider_row("Y", -20, 20, 3, "")
+        self._shadow_oy_slider, self._shadow_oy_label, soy_w = self._make_slider_row("Y", -30, 30, 3, "")
         self._shadow_oy_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.shadow_offset_y_changed, float(v)))
+        sd.addWidget(sox_w)
         sd.addWidget(soy_w)
-        self._shadow_blur_slider, self._shadow_blur_label, sb_w = self._make_slider_row("Blur", 0, 20, 5, "")
-        self._shadow_blur_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.shadow_blur_changed, float(v)))
-        sd.addWidget(sb_w)
+        # Blur row: separate X and Y blur
+        self._shadow_blur_x_slider, self._shadow_blur_x_label, sbx_w = self._make_slider_row("BlX", 0, 40, 5, "")
+        self._shadow_blur_x_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.shadow_blur_x_changed, float(v)))
+        self._shadow_blur_y_slider, self._shadow_blur_y_label, sby_w = self._make_slider_row("BlY", 0, 40, 5, "")
+        self._shadow_blur_y_slider.valueChanged.connect(lambda v: self._emit_if_not_loading(self.shadow_blur_y_changed, float(v)))
+        sd.addWidget(sbx_w)
+        sd.addWidget(sby_w)
         self._shadow_details_widget = self._wrap_layout(sd)
         self._shadow_details_widget.hide()
         self._shadow_check.toggled.connect(self._shadow_details_widget.setVisible)
@@ -532,14 +551,18 @@ class SidePanel(QWidget):
         self._layout.addStretch()
         self.update_for_tool(ToolType.SELECT)
 
+        # Theme colors used by paintEvent (defaults match the hardcoded dark theme)
+        self._theme_bg = QColor(26, 26, 46)
+        self._theme_border = QColor(60, 60, 90)
+
     def paintEvent(self, event):
         """Solid background with right-side separator (for docked layout)."""
         p = QPainter(self)
-        p.setBrush(QColor(26, 26, 46))
+        p.setBrush(self._theme_bg)
         p.setPen(Qt.PenStyle.NoPen)
         p.drawRect(self.rect())
         # Right border separator
-        p.setPen(QPen(QColor(60, 60, 90), 1))
+        p.setPen(QPen(self._theme_border, 1))
         p.drawLine(self.rect().topRight(), self.rect().bottomRight())
         p.end()
 
@@ -567,7 +590,8 @@ class SidePanel(QWidget):
             props["shadow_color"] = self._shadow_color
             props["shadow_offset_x"] = self._shadow_ox_slider.value()
             props["shadow_offset_y"] = self._shadow_oy_slider.value()
-            props["shadow_blur"] = self._shadow_blur_slider.value()
+            props["shadow_blur_x"] = self._shadow_blur_x_slider.value()
+            props["shadow_blur_y"] = self._shadow_blur_y_slider.value()
         if s.get("text"):
             props["font_family"] = self._font_combo.currentText()
             props["font_size"] = self._font_size_slider.value()
@@ -632,8 +656,14 @@ class SidePanel(QWidget):
                 self._shadow_ox_slider.setValue(int(props["shadow_offset_x"]))
             if "shadow_offset_y" in props:
                 self._shadow_oy_slider.setValue(int(props["shadow_offset_y"]))
-            if "shadow_blur" in props:
-                self._shadow_blur_slider.setValue(int(props["shadow_blur"]))
+            if "shadow_blur_x" in props:
+                self._shadow_blur_x_slider.setValue(int(props["shadow_blur_x"]))
+            if "shadow_blur_y" in props:
+                self._shadow_blur_y_slider.setValue(int(props["shadow_blur_y"]))
+            # Legacy migration: single blur_radius maps to both axes
+            if "shadow_blur" in props and "shadow_blur_x" not in props:
+                self._shadow_blur_x_slider.setValue(int(props["shadow_blur"]))
+                self._shadow_blur_y_slider.setValue(int(props["shadow_blur"]))
             if "font_family" in props:
                 from PySide6.QtGui import QFont as _QFont
                 self._font_combo.setCurrentFont(_QFont(props["font_family"]))
@@ -764,9 +794,10 @@ class SidePanel(QWidget):
         self._color_widget.setVisible(s.get("color", False))
         if s.get("color", False):
             self._bg_color_container.setVisible(s.get("bg", True))
-        self._stroke_title.setVisible(s.get("stroke", False))
-        self._stroke_row.setVisible(s.get("stroke", False))
-        self._line_style_title.setVisible(s.get("line_style", False))
+        # Stroke section: show if stroke OR line_style
+        show_stroke = s.get("stroke", False) or s.get("line_style", False)
+        self._stroke_widget.setVisible(show_stroke)
+        # Line style sub-section within stroke
         self._line_style_widget.setVisible(s.get("line_style", False))
         self._fill_title.setVisible(s.get("fill", False))
         self._fill_widget.setVisible(s.get("fill", False))
@@ -809,7 +840,8 @@ class SidePanel(QWidget):
             self._shadow_details_widget.setVisible(s.shadow.enabled)
             self._shadow_ox_slider.setValue(int(s.shadow.offset_x))
             self._shadow_oy_slider.setValue(int(s.shadow.offset_y))
-            self._shadow_blur_slider.setValue(int(s.shadow.blur_radius))
+            self._shadow_blur_x_slider.setValue(int(s.shadow.blur_x))
+            self._shadow_blur_y_slider.setValue(int(s.shadow.blur_y))
             self._shadow_color = s.shadow.color
             self._update_swatch(self._shadow_color_btn, self._shadow_color)
             self._opacity_slider.setValue(int(s.opacity * 100))
@@ -878,6 +910,61 @@ class SidePanel(QWidget):
         super().showEvent(event)
         self.raise_()
 
+    # ── Theme ─────────────────────────────────────────────────────────────────
+
+    def apply_theme(self, theme: dict):
+        """Apply an app_theme dict to panel stylesheet and repaint colors."""
+        from paparaz.ui.app_theme import build_panel_qss
+        from paparaz.ui.icons import combo_arrow_css
+        self.setStyleSheet(build_panel_qss(theme) + combo_arrow_css())
+        bg1    = theme.get("bg1",           "#1a1a2e")
+        bg2    = theme.get("bg2",           "#2a2a3e")
+        bg3    = theme.get("bg3",           "#3a3a4e")
+        fg     = theme.get("fg",            "#cccccc")
+        fg_br  = theme.get("fg_bright",     "#ffffff")
+        fg_dim = theme.get("fg_dim",        "#888888")
+        brd    = theme.get("border2",       "#3a3a4e")
+        acc    = theme.get("accent",        "#740096")
+
+        self._theme_bg = QColor(bg1)
+        self._theme_border = QColor(theme.get("border", "#3c3c5a"))
+
+        # Re-skin header buttons (they have per-widget QSS that overrides inheritance)
+        self._mode_btn.setStyleSheet(
+            f"QToolButton{{background:{bg2};border:1px solid {brd};"
+            f"border-radius:3px;color:{fg_dim};font-size:8px;padding:0;}}"
+            f"QToolButton:hover{{background:{bg3};color:{fg_br};}}"
+        )
+        self._pin_close_btn.setStyleSheet(
+            f"QToolButton{{background:{bg2};border:1px solid {brd};"
+            f"border-radius:3px;color:{fg};font-size:11px;padding:0;}}"
+            f"QToolButton:hover{{background:{acc};color:{fg_br};border-color:{acc};}}"
+        )
+        self._drag_label.setStyleSheet(
+            f"color:{fg_dim};font-size:9px;padding:0;background:transparent;"
+        )
+
+        # Update scroll area + content widget palette so they match
+        bg_color = QColor(bg1)
+        self._scroll.setStyleSheet(f"QScrollArea{{border:none;background:{bg1};}}")
+        for w in (self._scroll.viewport(), self._scroll_widget):
+            pal = w.palette()
+            pal.setColor(QPalette.ColorRole.Window, bg_color)
+            w.setPalette(pal)
+        self.update()
+
+    # ── Recent colors public API ──────────────────────────────────────────────
+
+    def set_recent_colors(self, colors: list):
+        """Load persisted recent colors into the palette (called at startup)."""
+        self._recent_palette.set_colors(colors)
+
+    def get_recent_colors(self) -> list:
+        """Return current recent colors list for persistence."""
+        return self._recent_palette.get_colors()
+
+    # ── Mode ─────────────────────────────────────────────────────────────────
+
     def set_mode(self, mode: str):
         """Set panel mode: 'auto', 'pinned', or 'hidden'."""
         self._mode = mode
@@ -898,9 +985,8 @@ class SidePanel(QWidget):
                 self._drag_offset = event.globalPosition().toPoint() - self.mapToGlobal(QPoint(0, 0))
             elif et == QEvent.Type.MouseMove and event.buttons() & Qt.MouseButton.LeftButton:
                 if self._drag_offset is not None:
+                    # Panel is a top-level window: move() uses screen coordinates
                     new_pos = event.globalPosition().toPoint() - self._drag_offset
-                    if self.parent():
-                        new_pos = self.parent().mapFromGlobal(new_pos)
                     self.move(new_pos)
             elif et == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
                 self._drag_offset = None
@@ -946,6 +1032,7 @@ class SidePanel(QWidget):
         if c.isValid():
             self._fg_color = c.name(QColor.NameFormat.HexArgb)
             self._update_swatch(self._fg_btn, self._fg_color)
+            self._recent_palette.add_color(self._fg_color)
             self.fg_color_changed.emit(self._fg_color)
 
     def _pick_bg_color(self):
@@ -954,6 +1041,7 @@ class SidePanel(QWidget):
         if c.isValid():
             self._bg_color = c.name(QColor.NameFormat.HexArgb)
             self._update_swatch(self._bg_btn, self._bg_color)
+            self._recent_palette.add_color(self._bg_color)
             self.bg_color_changed.emit(self._bg_color)
 
     def _pick_text_bg_color(self):
@@ -962,6 +1050,7 @@ class SidePanel(QWidget):
         if c.isValid():
             self._text_bg_color = c.name(QColor.NameFormat.HexArgb)
             self._update_swatch(self._text_bg_btn, self._text_bg_color)
+            self._recent_palette.add_color(self._text_bg_color)
             self.text_bg_color_changed.emit(self._text_bg_color)
 
     def _pick_shadow_color(self):
@@ -970,6 +1059,7 @@ class SidePanel(QWidget):
         if c.isValid():
             self._shadow_color = c.name(QColor.NameFormat.HexArgb)
             self._update_swatch(self._shadow_color_btn, self._shadow_color)
+            self._recent_palette.add_color(self._shadow_color)
             if not self._loading_element:
                 self.shadow_color_changed.emit(self._shadow_color)
 
@@ -979,5 +1069,18 @@ class SidePanel(QWidget):
         if c.isValid():
             self._num_text_color = c.name(QColor.NameFormat.HexArgb)
             self._update_swatch(self._num_text_color_btn, self._num_text_color)
+            self._recent_palette.add_color(self._num_text_color)
             if not self._loading_element:
                 self.number_text_color_changed.emit(self._num_text_color)
+
+    def _apply_palette_fg(self, color: str):
+        """Apply a color from the recent palette as foreground."""
+        self._fg_color = color
+        self._update_swatch(self._fg_btn, self._fg_color)
+        self.fg_color_changed.emit(self._fg_color)
+
+    def _apply_palette_bg(self, color: str):
+        """Apply a color from the recent palette as background."""
+        self._bg_color = color
+        self._update_swatch(self._bg_btn, self._bg_color)
+        self.bg_color_changed.emit(self._bg_color)

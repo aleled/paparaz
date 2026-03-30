@@ -268,14 +268,20 @@ ICONS_SVG = {
 
 
 def svg_to_icon(svg_str: str, size: int = 24) -> QIcon:
-    """Convert an SVG string to a QIcon."""
+    """Convert an SVG string to a crisp QIcon with 1× and 2× pixmaps for HiDPI."""
     renderer = QSvgRenderer(QByteArray(svg_str.encode()))
-    pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    renderer.render(painter)
-    painter.end()
-    return QIcon(pixmap)
+    icon = QIcon()
+    for scale in (1, 2):
+        px = QPixmap(size * scale, size * scale)
+        px.setDevicePixelRatio(scale)
+        px.fill(Qt.GlobalColor.transparent)
+        p = QPainter(px)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        renderer.render(p, QRectF(0, 0, size, size))
+        p.end()
+        icon.addPixmap(px)
+    return icon
 
 
 def get_icon(name: str, size: int = 24) -> QIcon:

@@ -71,8 +71,9 @@ TOOL_DEFS = [
     (ToolType.MASQUERADE,"blur",      "Blur (M)"),
     (ToolType.FILL,      "fill",      "Fill (F)"),
     (ToolType.STAMP,     "star",      "Stamp (S)"),
-    (ToolType.CROP,      "crop",      "Crop (C)"),
-    (ToolType.SLICE,     "slice",     "Slice (Z)"),
+    (ToolType.CROP,        "crop",        "Crop (C)"),
+    (ToolType.SLICE,       "slice",       "Slice (Z)"),
+    (ToolType.EYEDROPPER,  "eyedropper",  "Eyedropper (I)"),
 ]
 
 ACTION_DEFS = [

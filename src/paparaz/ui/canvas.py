@@ -44,6 +44,9 @@ class AnnotationCanvas(QWidget):
     element_selected = Signal(object)  # AnnotationElement or None
     zoom_changed = Signal(float)
     request_text_edit = Signal(object)  # TextElement to re-edit
+    _eyedropper_done = Signal(object)   # ToolType — return-to-prev-tool signal
+    fg_color_picked = Signal(str)       # eyedropper fg pick
+    bg_color_picked = Signal(str)       # eyedropper bg pick
 
     def __init__(self, background: QPixmap, parent=None):
         super().__init__(parent)

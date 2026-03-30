@@ -121,8 +121,9 @@ TOOL_SECTIONS = {
     ToolType.MASQUERADE: _sec(color=False,                                              mask=True),
     ToolType.FILL:       _sec(color=True, bg=False, fill_tol=True),
     ToolType.STAMP:      _sec(color=False,                                 effects=True, stamp=True),
-    ToolType.CROP:       _sec(color=False),
-    ToolType.SLICE:      _sec(color=False),
+    ToolType.CROP:        _sec(color=False),
+    ToolType.SLICE:       _sec(color=False),
+    ToolType.EYEDROPPER:  _sec(color=False),
 }
 
 

@@ -1,8 +1,9 @@
-"""Special tools: Text, Numbering, Eraser, Masquerade, Fill, Stamp, Slice - with hover previews."""
+"""Special tools: Text, Numbering, Eraser, Masquerade, Fill, Stamp, Slice, Eyedropper."""
 
 import math
-from PySide6.QtCore import Qt, QPointF, QRectF
+from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QObject
 from PySide6.QtGui import QMouseEvent, QKeyEvent, QPainter, QColor, QPen, QFont, QFontMetrics, QImage, QPixmap, QTransform
+from PySide6.QtWidgets import QApplication
 from paparaz.tools.base import BaseTool, ToolType
 from paparaz.core.elements import (
     TextElement, NumberElement, MaskElement, StampElement, ImageElement, ElementStyle,
@@ -1106,3 +1107,176 @@ class SliceTool(_RotatableSelectionMixin, BaseTool):
             int(rect.x() + 4), int(rect.bottom() + 14),
             f"{w} × {h} px{rot_txt}  —  Enter / double-click / right-click to slice · Esc to cancel"
         )
+
+
+# ── Eyedropper / colour-pick tool ─────────────────────────────────────────────
+
+class EyedropperTool(BaseTool):
+    """Click anywhere on the canvas to sample a colour.
+
+    Left-click  → sampled colour becomes the foreground (Fg) colour.
+    Right-click → sampled colour becomes the background (Bg) colour.
+
+    A magnifying loupe (10× zoom, 80 px diameter) follows the cursor and
+    shows the exact pixel that will be picked.  The hex code is shown
+    beneath the loupe.
+
+    After picking, the tool automatically returns to the previously active
+    tool so the user can keep annotating immediately.
+    """
+
+    tool_type = ToolType.EYEDROPPER
+    cursor    = Qt.CursorShape.CrossCursor
+
+    _LOUPE_D   = 80    # loupe circle diameter in widget pixels
+    _ZOOM      = 10    # magnification factor
+    _SAMPLE_R  = _LOUPE_D // (2 * _ZOOM)   # half-size of sampled area (px)
+
+    def __init__(self, canvas):
+        super().__init__(canvas)
+        self._loupe_color: QColor = QColor(Qt.GlobalColor.white)
+        self._prev_tool_type = None   # tool to return to after picking
+
+    # ── Tool lifecycle ──────────────────────────────────────────────────────
+
+    def on_activate(self):
+        # Remember which tool we came from so we can restore it
+        from paparaz.tools.base import ToolType as TT
+        ct = getattr(self.canvas, '_tool', None)
+        if ct and ct.tool_type != TT.EYEDROPPER:
+            self._prev_tool_type = ct.tool_type
+
+    def on_deactivate(self):
+        super().on_deactivate()
+
+    # ── Mouse events ────────────────────────────────────────────────────────
+
+    def on_hover(self, pos: QPointF):
+        self._hover_pos = pos
+        self._loupe_color = self._sample_color(pos)
+        self.canvas.update()
+
+    def on_press(self, pos: QPointF, event: QMouseEvent):
+        color = self._sample_color(pos)
+        hex_color = color.name()   # '#rrggbb'
+
+        if event.button() == Qt.MouseButton.RightButton:
+            self.canvas.set_background_color(hex_color)
+            # Also push to side panel swatch
+            if hasattr(self.canvas, 'bg_color_picked'):
+                self.canvas.bg_color_picked.emit(hex_color)
+        else:
+            self.canvas.set_foreground_color(hex_color)
+            if hasattr(self.canvas, 'fg_color_picked'):
+                self.canvas.fg_color_picked.emit(hex_color)
+
+        # Return to previous tool automatically
+        self._return_to_prev_tool()
+
+    def on_release(self, pos: QPointF, event: QMouseEvent):
+        pass   # handled in on_press
+
+    # ── Colour sampling ─────────────────────────────────────────────────────
+
+    def _sample_color(self, pos: QPointF) -> QColor:
+        """Sample the rendered canvas pixel at *pos* (widget coordinates)."""
+        # Grab from screen so we see the composed result (bg + all elements)
+        global_pt = self.canvas.mapToGlobal(pos.toPoint())
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return QColor(Qt.GlobalColor.white)
+        pix = screen.grabWindow(0, global_pt.x(), global_pt.y(), 1, 1)
+        img = pix.toImage()
+        return QColor(img.pixel(0, 0))
+
+    def _sample_area(self, pos: QPointF) -> QPixmap:
+        """Grab a small area around *pos* for the loupe magnification."""
+        r = self._SAMPLE_R
+        d = r * 2 + 1
+        global_pt = self.canvas.mapToGlobal(pos.toPoint())
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            pix = QPixmap(d, d)
+            pix.fill(Qt.GlobalColor.gray)
+            return pix
+        return screen.grabWindow(0, global_pt.x() - r, global_pt.y() - r, d, d)
+
+    # ── Hover paint (loupe) ─────────────────────────────────────────────────
+
+    def paint_hover(self, painter: QPainter):
+        if self._hover_pos is None:
+            return
+
+        pos   = self._hover_pos
+        d     = self._LOUPE_D
+        r     = d // 2
+        # Position loupe above-right of cursor with small gap
+        lx = int(pos.x()) + 16
+        ly = int(pos.y()) - d - 20
+        # Clamp inside canvas
+        cw, ch = self.canvas.width(), self.canvas.height()
+        if lx + d > cw:
+            lx = int(pos.x()) - d - 16
+        if ly < 0:
+            ly = int(pos.y()) + 20
+
+        # ── Grab and scale source pixels ──────────────────────────────────
+        src = self._sample_area(pos)
+        scaled = src.scaled(d, d,
+                            Qt.AspectRatioMode.IgnoreAspectRatio,
+                            Qt.TransformationMode.FastTransformation)
+
+        # ── Draw into circular clip ────────────────────────────────────────
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Clipping circle
+        from PySide6.QtGui import QPainterPath
+        path = QPainterPath()
+        path.addEllipse(lx, ly, d, d)
+        painter.setClipPath(path)
+        painter.drawPixmap(lx, ly, scaled)
+        painter.setClipping(False)
+
+        # Border
+        border_col = self._loupe_color
+        # Use contrasting border
+        bright = border_col.lightnessF()
+        ring_col = QColor("#ffffff") if bright < 0.5 else QColor("#222222")
+        painter.setPen(QPen(ring_col, 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(lx, ly, d, d)
+
+        # Centre cross-hair
+        cx = lx + r
+        cy = ly + r
+        painter.setPen(QPen(ring_col, 1))
+        painter.drawLine(cx - 6, cy, cx + 6, cy)
+        painter.drawLine(cx, cy - 6, cx, cy + 6)
+
+        # ── Colour swatch + hex label below loupe ─────────────────────────
+        swatch_y = ly + d + 4
+        swatch_h = 18
+        swatch_w = d
+        painter.setBrush(self._loupe_color)
+        painter.setPen(QPen(ring_col, 1))
+        painter.drawRect(lx, swatch_y, swatch_w, swatch_h)
+
+        hex_str = self._loupe_color.name().upper()
+        painter.setPen(QColor("#ffffff") if bright < 0.5 else QColor("#000000"))
+        painter.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
+        painter.drawText(lx, swatch_y, swatch_w, swatch_h,
+                         Qt.AlignmentFlag.AlignCenter, hex_str)
+
+        painter.restore()
+
+    # ── Helpers ─────────────────────────────────────────────────────────────
+
+    def _return_to_prev_tool(self):
+        """Switch back to the tool that was active before eyedropper."""
+        if self._prev_tool_type is None:
+            from paparaz.tools.base import ToolType as TT
+            self._prev_tool_type = TT.SELECT
+        # Signal the editor to switch tool via canvas attribute
+        if hasattr(self.canvas, '_eyedropper_done'):
+            self.canvas._eyedropper_done.emit(self._prev_tool_type)

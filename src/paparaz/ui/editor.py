@@ -21,6 +21,7 @@ from paparaz.tools.drawing import (
 )
 from paparaz.tools.special import (
     TextTool, NumberingTool, EraserTool, MasqueradeTool, FillTool, StampTool, CropTool, SliceTool,
+    EyedropperTool,
 )
 from paparaz.core.export import save_png, save_jpg, save_svg, copy_to_clipboard
 from paparaz.core.elements import (
@@ -136,8 +137,9 @@ class EditorWindow(QWidget):
             ToolType.MASQUERADE:self._masquerade_tool,
             ToolType.FILL:      FillTool(self._canvas),
             ToolType.STAMP:     self._stamp_tool,
-            ToolType.CROP:      self._crop_tool,
-            ToolType.SLICE:     self._slice_tool,
+            ToolType.CROP:       self._crop_tool,
+            ToolType.SLICE:      self._slice_tool,
+            ToolType.EYEDROPPER: EyedropperTool(self._canvas),
         }
 
         # --- Toolbar signals ---
@@ -226,6 +228,10 @@ class EditorWindow(QWidget):
         # Canvas signals
         self._canvas.element_selected.connect(self._on_element_selected)
         self._canvas.request_text_edit.connect(self._on_text_edit_request)
+        # Eyedropper: return to previous tool after pick, update side panel swatches
+        self._canvas._eyedropper_done.connect(self._on_tool_selected)
+        self._canvas.fg_color_picked.connect(self._on_eyedropper_fg)
+        self._canvas.bg_color_picked.connect(self._on_eyedropper_bg)
 
         self._setup_shortcuts()
         self._on_tool_selected(ToolType.SELECT)
@@ -377,6 +383,18 @@ class EditorWindow(QWidget):
 
     def _on_element_selected(self, element):
         self._side_panel.on_element_selected(element)
+
+    def _on_eyedropper_fg(self, color: str):
+        """Eyedropper picked a foreground color — update side panel swatch + recent palette."""
+        self._side_panel._fg_color = color
+        self._side_panel._update_swatch(self._side_panel._fg_btn, color)
+        self._side_panel._recent_palette.add_color(color)
+
+    def _on_eyedropper_bg(self, color: str):
+        """Eyedropper picked a background color — update side panel swatch + recent palette."""
+        self._side_panel._bg_color = color
+        self._side_panel._update_swatch(self._side_panel._bg_btn, color)
+        self._side_panel._recent_palette.add_color(color)
 
     def _on_panel_mode_changed(self, mode: str):
         if mode == "hidden":
@@ -734,6 +752,7 @@ class EditorWindow(QWidget):
             "X": ToolType.ERASER,    "M": ToolType.MASQUERADE,
             "S": ToolType.STAMP,     "C": ToolType.CROP,
             "F": ToolType.FILL,      "Z": ToolType.SLICE,
+            "I": ToolType.EYEDROPPER,
         }
         for key, tt in tool_keys.items():
             sc(key, lambda _tt=tt: self._on_tool_selected(_tt))

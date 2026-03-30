@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for PapaRaZ v0.8.0
+# PyInstaller spec for PapaRaZ v0.9.1
 
 block_cipher = None
 

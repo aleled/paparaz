@@ -1,5 +1,50 @@
 # PapaRaZ - Changelog
 
+## [0.9.3] - 2026-03-30
+
+### Curved Arrow Tool (Q)
+- **`CurvedArrowElement`** — quadratic Bezier curve with an arrowhead at the end point
+- Three-click workflow: click to set start → click to set end → move mouse to bend the curve → click to commit
+- Arrowhead aligns to the curve tangent at the end point (control → end direction), not the raw start→end angle
+- Escape cancels at any phase; Enter commits during the control-point phase
+- Phase indicator dots and hint labels drawn near the cursor during each phase
+- Full shadow, opacity, stroke width/style, and effects panel support
+- Keyboard shortcut **Q**
+
+### Eyedropper Tool (I)
+- **`EyedropperTool`** — samples any pixel from the screen (screenshot + drawn annotations)
+- Left-click → set foreground colour; right-click → set background colour
+- Live magnifying loupe: 80 px circle, 10× zoom, contrasting ring, crosshair, hex colour label beneath
+- Samples from `QScreen.grabWindow(0, x, y, 1, 1)` (composed screen, not canvas pixmap)
+- Auto-returns to the previously active tool after picking
+- Sampled colour added to recent colours palette automatically
+- Keyboard shortcut **I**
+
+### Text Outline / Stroke
+- `TextElement` gains `stroke_enabled`, `stroke_color`, `stroke_width` fields
+- Draw order: shadow → stroke path → fill text (ensures stroke is visible under fill)
+- Stroke drawn via `QPainterPath.addText()` + `strokePath()` with `stroke_width * 2` (centred stroke, outer half visible)
+- Side panel TEXT section: "Outline" checkbox + colour swatch + width slider (0.5–10 px in 0.5 steps)
+- Syncs from selected TextElement when re-editing; serialized to `to_dict()`
+
+### Installer: Force-Kill Before Install
+- `PrepareToInstall()` Pascal function in Inno Setup script runs before file copy
+- First `taskkill /im PapaRaZ.exe` (graceful), waits 1s, then `taskkill /f /im PapaRaZ.exe` (force)
+- Prevents "file in use" errors when upgrading over a running instance
+
+### In-App Update Downloader
+- `UpdateDownloadDialog` replaces the old "Open Browser" link
+- Streams the installer in 64 KB chunks via `urllib.request`, shows a progress bar
+- "Install Now" button: launches installer detached (`subprocess.Popen DETACHED_PROCESS`) then calls `QApplication.quit()`
+- Falls back to "Open Browser" if download fails
+
+### Release Pipeline Fix
+- `release.bat` now reads version dynamically from `pyproject.toml` via `findstr`
+- Step 6: loads `GH_TOKEN` from `.env`, finds `gh.exe`, uploads installer to GitHub release with `--clobber`
+- Prevents missing-installer on GitHub releases (was omitting the `.exe` asset)
+
+---
+
 ## [0.9.2] - 2026-03-30
 
 ### Rotation-Aware Resize (All Element Types)

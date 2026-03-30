@@ -124,19 +124,20 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 
 ## Future Enhancements (Backlog)
 - [x] Custom color palette / recent colors (side panel, persisted to settings)
-- [ ] Eyedropper / color grab tool (icon ready)
+- [x] Eyedropper / color grab tool — live loupe, fg/bg pick, auto-return to prev tool (I)
 - [ ] Layers panel (element z-ordering with drag)
-- [ ] Text outline / stroke on text
-- [ ] Curved arrows / Bezier curves
+- [x] Text outline / stroke on text — QPainterPath, side panel Outline section
+- [x] Curved arrows / Bezier curves — CurvedArrowElement, 3-click workflow, tangent arrowhead (Q)
 - [x] Stamp/emoji tool (16 predefined SVG stamps: check, cross, OK, BAD, APPROVED, REJECTED, star, heart, warning, info, question, thumbsup, thumbsdown, priority, bug, note)
-- [ ] Magnifier tool (zoom lens while selecting)
+- [ ] Magnifier tool (zoom loupe callout — source rect + zoomed circle annotation)
 - [ ] Video/GIF recording
 - [ ] Upload to cloud (Imgur, custom endpoint)
 - [ ] Plugin/extension system
 - [ ] Localization (i18n)
 - [ ] Accessibility (screen reader support)
 - [ ] Project file format (.papraz) to save/load edits with full object state
-- [ ] Installer: force-kill running PapaRaZ.exe before install (taskkill fallback in Inno Setup)
+- [x] Installer: force-kill running PapaRaZ.exe before install (taskkill fallback in Inno Setup)
+- [x] In-app update downloader (progress bar, auto-launch installer, fallback browser)
 
 ---
 
@@ -145,5 +146,5 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Completed
 
 ## Current Status: Phase 6 complete, Phase 7 nearly complete (testing remaining)
-**Version**: 0.9.2
+**Version**: 0.9.3
 **Last updated**: 2026-03-30

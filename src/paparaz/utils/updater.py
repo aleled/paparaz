@@ -31,7 +31,7 @@ from PySide6.QtGui import QFont
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
-__version__ = "0.9.2"
+__version__ = "0.9.3"
 
 _GITHUB_API  = "https://api.github.com/repos/aleled/paparaz/releases/latest"
 _RELEASES_PAGE = "https://github.com/aleled/paparaz/releases/latest"

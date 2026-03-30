@@ -139,7 +139,7 @@ begin
     BannerLbl.AutoSize    := False;
     BannerLbl.Caption     := 'Upgrading:';
     BannerLbl.Font.Size   := 9;
-    BannerLbl.Font.Bold   := True;
+    BannerLbl.Font.Style  := [fsBold];
     BannerLbl.Font.Color  := $740096;  { BGR = #960074 → purple }
 
     ArrowLbl             := TLabel.Create(WizardForm);
@@ -150,7 +150,7 @@ begin
     ArrowLbl.AutoSize    := False;
     ArrowLbl.Caption     := 'v' + OldVer + '   →   v{#AppVersion}';
     ArrowLbl.Font.Size   := 11;
-    ArrowLbl.Font.Bold   := True;
+    ArrowLbl.Font.Style  := [fsBold];
     ArrowLbl.Font.Color  := $202020;
   end else
   begin
@@ -163,7 +163,7 @@ begin
     NewVerLbl.AutoSize    := False;
     NewVerLbl.Caption     := 'Installing version  v{#AppVersion}';
     NewVerLbl.Font.Size   := 11;
-    NewVerLbl.Font.Bold   := True;
+    NewVerLbl.Font.Style  := [fsBold];
     NewVerLbl.Font.Color  := $740096;
   end;
 end;

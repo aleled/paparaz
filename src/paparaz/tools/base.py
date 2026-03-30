@@ -17,6 +17,7 @@ class ToolType(Enum):
     HIGHLIGHT = auto()
     LINE = auto()
     ARROW = auto()
+    CURVED_ARROW = auto()
     RECTANGLE = auto()
     ELLIPSE = auto()
     TEXT = auto()

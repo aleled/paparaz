@@ -1,12 +1,12 @@
-"""Drawing tools: Pen, Brush, Highlight, Line, Arrow, Rectangle, Ellipse."""
+"""Drawing tools: Pen, Brush, Highlight, Line, Arrow, CurvedArrow, Rectangle, Ellipse."""
 
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen
 from paparaz.tools.base import BaseTool, ToolType
 from paparaz.core.history import Command
 from paparaz.core.elements import (
     PenElement, BrushElement, HighlightElement, LineElement, ArrowElement,
-    RectElement, EllipseElement, ElementStyle,
+    CurvedArrowElement, RectElement, EllipseElement, ElementStyle,
 )
 
 
@@ -214,3 +214,149 @@ class EllipseTool(BaseTool):
         self._current = None
         self._start = None
         self.canvas.set_preview(None)
+
+
+class CurvedArrowTool(BaseTool):
+    """Three-click curved arrow (quadratic Bezier with arrowhead).
+
+    Click 1 — set start point
+    Move    — ghost line to cursor
+    Click 2 — set end point; curve bends as cursor moves
+    Move    — control point tracks cursor; live curve preview
+    Click 3 — commit element
+
+    Esc cancels at any phase. Enter commits during phase 2.
+    """
+
+    tool_type = ToolType.CURVED_ARROW
+
+    # Phase constants
+    _PHASE_IDLE = 0   # waiting for first click
+    _PHASE_END  = 1   # start set, waiting for end click
+    _PHASE_CTRL = 2   # start+end set, waiting for control click
+
+    def __init__(self, canvas):
+        super().__init__(canvas)
+        self._phase = self._PHASE_IDLE
+        self._start: QPointF | None = None
+        self._end:   QPointF | None = None
+        self._preview: CurvedArrowElement | None = None
+
+    # ── Activation ───────────────────────────────────────────────────────────
+
+    def on_activate(self):
+        self._reset()
+
+    def on_deactivate(self):
+        self._reset()
+
+    def _reset(self):
+        self._phase = self._PHASE_IDLE
+        self._start = None
+        self._end   = None
+        self._preview = None
+        self.canvas.set_preview(None)
+
+    # ── Mouse events ─────────────────────────────────────────────────────────
+
+    def on_press(self, pos: QPointF, event: QMouseEvent):
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+
+        if self._phase == self._PHASE_IDLE:
+            self._start = pos
+            self._phase = self._PHASE_END
+            style = self.canvas.current_style()
+            self._preview = CurvedArrowElement(pos, pos, pos, style)
+            self.canvas.set_preview(self._preview)
+
+        elif self._phase == self._PHASE_END:
+            self._end = pos
+            self._phase = self._PHASE_CTRL
+            style = self.canvas.current_style()
+            self._preview = CurvedArrowElement(self._start, self._end, None, style)
+            self.canvas.set_preview(self._preview)
+
+        elif self._phase == self._PHASE_CTRL:
+            if self._preview:
+                self.canvas.add_element(self._preview)
+            self._reset()
+
+    def on_move(self, pos: QPointF, event: QMouseEvent):
+        if self._phase == self._PHASE_END and self._preview:
+            self._preview.end = pos
+            self._preview.control = QPointF(
+                (self._start.x() + pos.x()) / 2,
+                (self._start.y() + pos.y()) / 2,
+            )
+            self.canvas.set_preview(self._preview)
+
+    def on_hover(self, pos: QPointF):
+        self._hover_pos = pos
+        if self._phase == self._PHASE_CTRL and self._preview:
+            self._preview.control = pos
+            self.canvas.set_preview(self._preview)
+        self.canvas.update()
+
+    def on_key_press(self, event):
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self._reset()
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._phase == self._PHASE_CTRL and self._preview:
+                self.canvas.add_element(self._preview)
+                self._reset()
+
+    # ── Hover paint ──────────────────────────────────────────────────────────
+
+    def paint_hover(self, painter: QPainter):
+        """Draw phase indicator dots and hint text near the cursor."""
+        if self._phase == self._PHASE_IDLE:
+            if self._hover_pos:
+                painter.save()
+                painter.setPen(QPen(QColor(255, 255, 255, 160), 1.5))
+                painter.setBrush(QColor(116, 0, 150, 200))
+                painter.drawEllipse(self._hover_pos, 5, 5)
+                painter.restore()
+            return
+
+        if self._phase == self._PHASE_END and self._start and self._hover_pos:
+            painter.save()
+            painter.setPen(QPen(QColor(255, 171, 64, 200), 1.5))
+            painter.setBrush(QColor(116, 0, 150, 180))
+            painter.drawEllipse(self._start, 5, 5)
+            painter.restore()
+            _draw_curved_hint(painter, self._hover_pos, "Click to set end — Esc to cancel")
+
+        elif self._phase == self._PHASE_CTRL and self._start and self._end:
+            painter.save()
+            painter.setPen(QPen(QColor(255, 171, 64, 200), 1.5))
+            painter.setBrush(QColor(116, 0, 150, 180))
+            painter.drawEllipse(self._start, 5, 5)
+            painter.drawEllipse(self._end, 5, 5)
+            if self._hover_pos:
+                painter.setBrush(QColor(0, 188, 140, 200))
+                painter.drawEllipse(self._hover_pos, 5, 5)
+            painter.restore()
+            if self._hover_pos:
+                _draw_curved_hint(painter, self._hover_pos, "Click to commit — Enter commit — Esc cancel")
+
+
+def _draw_curved_hint(painter: QPainter, pos: QPointF, text: str):
+    """Small translucent tooltip-style label near the cursor."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QFont, QFontMetrics
+    font = QFont("Arial", 9)
+    painter.save()
+    painter.setFont(font)
+    fm = QFontMetrics(font)
+    tw = fm.horizontalAdvance(text) + 10
+    th = fm.height() + 4
+    bx = pos.x() + 14
+    by = pos.y() - th - 4
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(0, 0, 0, 160))
+    painter.drawRoundedRect(QRectF(bx, by, tw, th), 3, 3)
+    painter.setPen(QColor(255, 255, 255, 220))
+    painter.drawText(QRectF(bx, by, tw, th), Qt.AlignmentFlag.AlignCenter, text)
+    painter.restore()

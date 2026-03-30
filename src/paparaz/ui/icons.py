@@ -86,6 +86,12 @@ ICONS_SVG = {
       <polygon fill="#FFAB40" points="19,5 12,7 17,12"/>
     </svg>""",
 
+    # Curved arrow — orange arc with arrowhead
+    "curved_arrow": """<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 18 Q14 2 20 10" fill="none" stroke="#FFAB40" stroke-width="2.5" stroke-linecap="round"/>
+      <polygon fill="#FFAB40" points="20,10 14,8 18,14"/>
+    </svg>""",
+
     # Rectangle — teal outlined rect with brighter corners
     "rectangle": """<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <rect x="3" y="5" width="18" height="14" rx="1.5" fill="none" stroke="#80DEEA" stroke-width="2"/>

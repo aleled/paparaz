@@ -17,7 +17,8 @@ from paparaz.ui.side_panel import SidePanel
 from paparaz.tools.base import ToolType
 from paparaz.tools.select import SelectTool
 from paparaz.tools.drawing import (
-    PenTool, BrushTool, HighlightTool, LineTool, ArrowTool, RectangleTool, EllipseTool,
+    PenTool, BrushTool, HighlightTool, LineTool, ArrowTool, CurvedArrowTool,
+    RectangleTool, EllipseTool,
 )
 from paparaz.tools.special import (
     TextTool, NumberingTool, EraserTool, MasqueradeTool, FillTool, StampTool, CropTool, SliceTool,
@@ -110,7 +111,7 @@ class EditorWindow(QWidget):
         self._close_btn_overlay.clicked.connect(self._confirm_close)
 
         # Status label at bottom (minimal)
-        self._status = QLabel("V:Select  P:Pen  B:Brush  H:Highlight  L:Line  A:Arrow  R:Rect  E:Ellipse  T:Text  N:Num  S:Stamp  X:Erase  M:Blur  C:Crop")
+        self._status = QLabel("V:Select  P:Pen  B:Brush  H:Highlight  L:Line  A:Arrow  Q:CurvedArrow  R:Rect  E:Ellipse  T:Text  N:Num  S:Stamp  X:Erase  M:Blur  C:Crop")
         self._status.setStyleSheet("color: rgba(255,255,255,100); font-size: 9px; padding: 2px;")
         self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._status)
@@ -127,9 +128,10 @@ class EditorWindow(QWidget):
             ToolType.PEN:       PenTool(self._canvas),
             ToolType.BRUSH:     BrushTool(self._canvas),
             ToolType.HIGHLIGHT: HighlightTool(self._canvas),
-            ToolType.LINE:      LineTool(self._canvas),
-            ToolType.ARROW:     ArrowTool(self._canvas),
-            ToolType.RECTANGLE: RectangleTool(self._canvas),
+            ToolType.LINE:         LineTool(self._canvas),
+            ToolType.ARROW:        ArrowTool(self._canvas),
+            ToolType.CURVED_ARROW: CurvedArrowTool(self._canvas),
+            ToolType.RECTANGLE:    RectangleTool(self._canvas),
             ToolType.ELLIPSE:   EllipseTool(self._canvas),
             ToolType.TEXT:      self._text_tool,
             ToolType.NUMBERING: self._numbering_tool,
@@ -764,13 +766,13 @@ class EditorWindow(QWidget):
         tool_keys = {
             "V": ToolType.SELECT,    "P": ToolType.PEN,
             "B": ToolType.BRUSH,     "H": ToolType.HIGHLIGHT,
-            "L": ToolType.LINE,      "A": ToolType.ARROW,
-            "R": ToolType.RECTANGLE, "E": ToolType.ELLIPSE,
-            "T": ToolType.TEXT,      "N": ToolType.NUMBERING,
-            "X": ToolType.ERASER,    "M": ToolType.MASQUERADE,
-            "S": ToolType.STAMP,     "C": ToolType.CROP,
-            "F": ToolType.FILL,      "Z": ToolType.SLICE,
-            "I": ToolType.EYEDROPPER,
+            "L": ToolType.LINE,         "A": ToolType.ARROW,
+            "Q": ToolType.CURVED_ARROW, "R": ToolType.RECTANGLE,
+            "E": ToolType.ELLIPSE,      "T": ToolType.TEXT,
+            "N": ToolType.NUMBERING,    "X": ToolType.ERASER,
+            "M": ToolType.MASQUERADE,   "S": ToolType.STAMP,
+            "C": ToolType.CROP,         "F": ToolType.FILL,
+            "Z": ToolType.SLICE,        "I": ToolType.EYEDROPPER,
         }
         for key, tt in tool_keys.items():
             sc(key, lambda _tt=tt: self._on_tool_selected(_tt))

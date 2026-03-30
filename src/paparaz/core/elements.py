@@ -60,6 +60,7 @@ class ElementType(Enum):
     HIGHLIGHT = auto()
     LINE = auto()
     ARROW = auto()
+    CURVED_ARROW = auto()
     RECTANGLE = auto()
     ELLIPSE = auto()
     TEXT = auto()
@@ -547,6 +548,128 @@ class ArrowElement(LineElement):
 
         painter.setBrush(QColor(self.style.foreground_color))
         painter.drawPolygon(QPolygonF([self.end, p1, p2]))
+
+
+class CurvedArrowElement(AnnotationElement):
+    """Quadratic Bezier curve with an arrowhead at the end point.
+
+    Three points define the shape:
+      start   — where the curve begins
+      end     — where the curve ends (arrowhead here)
+      control — the quadratic Bezier control point (off-curve handle)
+    """
+
+    def __init__(self, start: QPointF = QPointF(), end: QPointF = QPointF(),
+                 control: Optional[QPointF] = None,
+                 style: Optional[ElementStyle] = None):
+        super().__init__(ElementType.CURVED_ARROW, style)
+        self.start = start
+        self.end = end
+        # Default control point: perpendicular offset at the midpoint
+        if control is None:
+            mx = (start.x() + end.x()) / 2
+            my = (start.y() + end.y()) / 2
+            dx = end.x() - start.x()
+            dy = end.y() - start.y()
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist > 0:
+                nx, ny = -dy / dist, dx / dist   # perpendicular unit vector
+                offset = dist * 0.3               # 30% of chord length
+                control = QPointF(mx + nx * offset, my + ny * offset)
+            else:
+                control = QPointF(mx, my)
+        self.control = control
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _build_path(self) -> "QPainterPath":
+        path = QPainterPath(self.start)
+        path.quadTo(self.control, self.end)
+        return path
+
+    def _tangent_at_end(self) -> tuple[float, float]:
+        """Direction of the curve tangent at t=1 (control → end)."""
+        dx = self.end.x() - self.control.x()
+        dy = self.end.y() - self.control.y()
+        dist = math.sqrt(dx * dx + dy * dy)
+        if dist < 1:
+            # Fallback: start→end direction
+            dx = self.end.x() - self.start.x()
+            dy = self.end.y() - self.start.y()
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist < 1:
+                return (1.0, 0.0)
+        return (dx / dist, dy / dist)
+
+    # ── AnnotationElement interface ───────────────────────────────────────────
+
+    def bounding_rect(self) -> QRectF:
+        path = self._build_path()
+        pad = max(self.style.line_width / 2, 8)
+        return path.boundingRect().adjusted(-pad, -pad, pad, pad)
+
+    def contains_point(self, point: QPointF) -> bool:
+        if self.rotation:
+            point = _rotate_point(point, self.bounding_rect().center(), -self.rotation)
+        tolerance = max(self.style.line_width, 8)
+        # Sample 60 points along the bezier and find minimum distance
+        sx, sy = self.start.x(), self.start.y()
+        ex, ey = self.end.x(), self.end.y()
+        cx, cy = self.control.x(), self.control.y()
+        px, py = point.x(), point.y()
+        for i in range(61):
+            t = i / 60.0
+            mt = 1.0 - t
+            bx = mt * mt * sx + 2 * mt * t * cx + t * t * ex
+            by = mt * mt * sy + 2 * mt * t * cy + t * t * ey
+            if math.sqrt((px - bx) ** 2 + (py - by) ** 2) < tolerance:
+                return True
+        return False
+
+    def _paint_curve(self, painter: QPainter):
+        pen = self._make_pen()
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(self._build_path())
+
+        # Arrowhead aligned with tangent at end
+        tdx, tdy = self._tangent_at_end()
+        angle = math.atan2(tdy, tdx)
+        arrow_size = max(12, self.style.line_width * 4)
+
+        p1 = QPointF(
+            self.end.x() - arrow_size * math.cos(angle - math.pi / 6),
+            self.end.y() - arrow_size * math.sin(angle - math.pi / 6),
+        )
+        p2 = QPointF(
+            self.end.x() - arrow_size * math.cos(angle + math.pi / 6),
+            self.end.y() - arrow_size * math.sin(angle + math.pi / 6),
+        )
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(self.style.foreground_color))
+        painter.drawPolygon(QPolygonF([self.end, p1, p2]))
+
+    def paint(self, painter: QPainter):
+        if self.rotation:
+            painter.save()
+            _apply_rotation(painter, self.bounding_rect().center(), self.rotation)
+            self._paint_shadow(painter, self._paint_curve)
+            painter.restore()
+        else:
+            self._paint_shadow(painter, self._paint_curve)
+
+    def move_by(self, dx: float, dy: float):
+        self.start   = QPointF(self.start.x()   + dx, self.start.y()   + dy)
+        self.end     = QPointF(self.end.x()     + dx, self.end.y()     + dy)
+        self.control = QPointF(self.control.x() + dx, self.control.y() + dy)
+
+    def to_dict(self) -> dict:
+        d = super().to_dict()
+        d["start"]   = (self.start.x(),   self.start.y())
+        d["end"]     = (self.end.x(),     self.end.y())
+        d["control"] = (self.control.x(), self.control.y())
+        return d
 
 
 class RectElement(AnnotationElement):

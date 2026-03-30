@@ -57,6 +57,11 @@ class AppSettings:
     shadow_default_offset_y: float = 3.0
     shadow_default_blur: float = 5.0
     auto_check_updates: bool = True
+    # File naming
+    filename_pattern: str = "{yyyy}-{MM}-{dd}_{HH}-{mm}-{ss}"
+    subfolder_pattern: str = ""
+    save_counter: int = 1          # persistent auto-increment counter
+    auto_save: bool = False        # True = save silently, False = show dialog
 
 
 class SettingsManager:
@@ -94,7 +99,11 @@ class SettingsManager:
         for k in ("save_directory", "default_format", "jpg_quality",
                    "start_on_login", "show_tray_notification", "theme",
                    "recent_captures", "max_recent", "zoom_presets",
-                   "default_theme_preset"):
+                   "default_theme_preset", "app_theme", "tray_icon_color",
+                   "shadow_default_offset_x", "shadow_default_offset_y",
+                   "shadow_default_blur", "auto_check_updates",
+                   "filename_pattern", "subfolder_pattern",
+                   "save_counter", "auto_save"):
             if k in data:
                 setattr(self.settings, k, data[k])
         if "tool_properties" in data and isinstance(data["tool_properties"], dict):

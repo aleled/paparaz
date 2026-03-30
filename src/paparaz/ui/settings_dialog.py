@@ -301,6 +301,38 @@ class SettingsDialog(QDialog):
         form2.addRow("Default delay:", self._delay_spin)
         vbox.addWidget(grp2)
 
+        # Filename Pattern
+        from paparaz.ui.filename_pattern_widget import FilenamePatternWidget
+        grp3, form3 = _grp("Filename Pattern")
+
+        self._fn_pattern_widget = FilenamePatternWidget()
+        self._fn_pattern_widget.set_pattern(
+            getattr(self._s, "filename_pattern", "{yyyy}-{MM}-{dd}_{HH}-{mm}-{ss}")
+        )
+        form3.addRow(self._fn_pattern_widget)
+
+        self._subfolder_edit = QLineEdit(getattr(self._s, "subfolder_pattern", ""))
+        self._subfolder_edit.setPlaceholderText("e.g. {yyyy}\\{MM}  (leave blank for none)")
+        form3.addRow("Subfolder:", self._subfolder_edit)
+
+        self._auto_save_check = QCheckBox("Auto-save silently (Ctrl+Shift+S skips dialog)")
+        self._auto_save_check.setChecked(getattr(self._s, "auto_save", False))
+        form3.addRow("", self._auto_save_check)
+
+        counter_row = QHBoxLayout()
+        self._counter_spin = QSpinBox()
+        self._counter_spin.setRange(1, 999999)
+        self._counter_spin.setValue(getattr(self._s, "save_counter", 1))
+        counter_row.addWidget(self._counter_spin)
+        reset_counter_btn = QPushButton("Reset to 1")
+        reset_counter_btn.setObjectName("secondary")
+        reset_counter_btn.clicked.connect(lambda: self._counter_spin.setValue(1))
+        counter_row.addWidget(reset_counter_btn)
+        counter_row.addStretch()
+        form3.addRow("Counter start:", counter_row)
+
+        vbox.addWidget(grp3)
+
         vbox.addStretch()
         return _scroll(inner)
 
@@ -715,6 +747,10 @@ class SettingsDialog(QDialog):
         s.save_directory         = self._save_dir.text()
         s.default_format         = self._format_combo.currentText()
         s.jpg_quality            = self._jpg_quality.value()
+        s.filename_pattern       = self._fn_pattern_widget.get_pattern()
+        s.subfolder_pattern      = self._subfolder_edit.text()
+        s.auto_save              = self._auto_save_check.isChecked()
+        s.save_counter           = self._counter_spin.value()
         s.show_tray_notification = self._tray_notify.isChecked()
 
         # Appearance

@@ -37,11 +37,15 @@ class EditorWindow(QWidget):
     pin_requested = Signal(QPixmap, QPixmap, list)
     file_saved = Signal(str)
 
-    def __init__(self, screenshot: QPixmap, settings_manager=None, parent=None):
+    def __init__(self, screenshot: QPixmap, settings_manager=None, parent=None,
+                 capture_window_title: str = "", capture_app_name: str = ""):
         super().__init__(parent)
         self._settings_manager = settings_manager
         self._screenshot = screenshot
         self._drag_pos = None
+        # Context for filename pattern tokens {title} and {app}
+        self._capture_window_title = capture_window_title
+        self._capture_app_name = capture_app_name
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -686,6 +690,7 @@ class EditorWindow(QWidget):
         sc("Ctrl+Y",       self._canvas.history.redo)
         sc("Ctrl+Shift+Z", self._canvas.history.redo)
         sc("Ctrl+S",       self._save_as)
+        sc("Ctrl+Shift+S", lambda: self._save_as(force_dialog=False))
         sc("Ctrl+C",       self._copy_to_clipboard)
         sc("Ctrl+V",       self._paste)
         sc("Ctrl+]",       self._canvas.bring_to_front)
@@ -750,28 +755,68 @@ class EditorWindow(QWidget):
 
     # --- Save / Copy / Paste / Pin ---
 
-    def _save_as(self):
-        save_dir = ""
-        if self._settings_manager:
-            save_dir = self._settings_manager.settings.save_directory
-        default_path = Path(save_dir) if save_dir else Path.home()
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save", str(default_path / "capture.png"),
-            "PNG (*.png);;JPEG (*.jpg);;SVG (*.svg);;All (*)",
-        )
-        if not path:
-            return
+    def _save_as(self, force_dialog: bool = True):
+        """Save the canvas.
+
+        Generates a smart filename from the configured pattern and either:
+        - Opens a Save As dialog with the generated name pre-filled (default), or
+        - Saves silently if auto_save is enabled and force_dialog is False.
+        """
+        from paparaz.core.filename_pattern import build_save_path, resolve
+
+        sm = self._settings_manager
+        s = sm.settings if sm else None
+
+        pattern      = s.filename_pattern     if s else "{yyyy}-{MM}-{dd}_{HH}-{mm}-{ss}"
+        sub_pattern  = s.subfolder_pattern    if s else ""
+        save_dir     = s.save_directory       if s else ""
+        default_fmt  = s.default_format       if s else "png"
+        jpg_q        = s.jpg_quality          if s else 90
+        counter      = s.save_counter         if s else 1
+        auto_save    = (s.auto_save and not force_dialog) if s else False
+
         pix = self._canvas.render_to_pixmap()
-        if path.lower().endswith(".svg"):
-            save_svg(self._canvas._background, path, self._canvas.paint_annotations)
-        elif path.lower().endswith((".jpg", ".jpeg")):
-            q = self._settings_manager.settings.jpg_quality if self._settings_manager else 90
-            save_jpg(pix, path, q)
+        w, h = pix.width(), pix.height()
+
+        suggested = build_save_path(
+            pattern=pattern,
+            save_dir=save_dir or str(Path.home() / "Pictures" / "PapaRaZ"),
+            subfolder_pattern=sub_pattern,
+            ext=default_fmt,
+            counter=counter,
+            title=getattr(self, "_capture_window_title", ""),
+            app=getattr(self, "_capture_app_name", ""),
+            width=w,
+            height=h,
+        )
+
+        if auto_save:
+            path = str(suggested)
         else:
-            save_png(pix, path)
-        if self._settings_manager:
-            self._settings_manager.add_recent(path)
-        self.file_saved.emit(path)
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Save Screenshot",
+                str(suggested),
+                "PNG (*.png);;JPEG (*.jpg *.jpeg);;SVG (*.svg);;All (*)",
+            )
+            if not path:
+                return
+
+        path = Path(path)
+        ext = path.suffix.lower()
+
+        if ext == ".svg":
+            save_svg(self._canvas._background, str(path), self._canvas.paint_annotations)
+        elif ext in (".jpg", ".jpeg"):
+            save_jpg(pix, str(path), jpg_q)
+        else:
+            save_png(pix, str(path))
+
+        # Increment persistent counter
+        if s:
+            s.save_counter = counter + 1
+            sm.add_recent(str(path))   # also saves settings
+
+        self.file_saved.emit(str(path))
 
     def _copy_to_clipboard(self):
         copy_to_clipboard(self._canvas.render_to_pixmap())

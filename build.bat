@@ -39,4 +39,8 @@ echo  Build complete!
 echo  Output: dist\PapaRaZ.exe
 echo =========================================
 echo.
-pause
+:: Only pause when run interactively (double-clicked), not when called from scripts.
+:: Check if stdin is a console (interactive) vs redirected (script/CI).
+set "INTERACTIVE=0"
+for /f "tokens=2" %%I in ('mode con 2^>nul ^| findstr "Columns"') do set "INTERACTIVE=1"
+if "%INTERACTIVE%"=="1" pause

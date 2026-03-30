@@ -1,8 +1,13 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
+
+:: Read version from pyproject.toml
+for /f "tokens=2 delims== " %%V in ('findstr /r "^version" pyproject.toml') do set RAW=%%V
+set VERSION=%RAW:"=%
+set VERSION=%VERSION: =%
 
 echo =========================================
-echo  PapaRaZ Build Script v0.9.1
+echo  PapaRaZ Build Script v%VERSION%
 echo =========================================
 echo.
 

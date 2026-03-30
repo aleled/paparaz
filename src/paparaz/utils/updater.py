@@ -10,6 +10,7 @@ import threading
 import urllib.request
 import urllib.error
 import json
+from http.client import HTTPException
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
@@ -18,7 +19,7 @@ from PySide6.QtWidgets import QMessageBox, QPushButton
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
 
-__version__ = "0.8.0"
+__version__ = "0.9.1"
 
 _GITHUB_API_URL = (
     "https://api.github.com/repos/aleled/paparaz/releases/latest"
@@ -76,6 +77,9 @@ def check_for_updates(parent: "QWidget | None" = None, silent: bool = True) -> N
             if latest > current:
                 bridge.update_available.emit(tag.lstrip("v"), html_url)
 
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                pass  # no release published yet — silently ignore
         except Exception:
             pass  # network errors are silently ignored
 
@@ -113,9 +117,10 @@ def check_for_updates_manual(parent: "QWidget | None" = None) -> None:
 
     def on_failed(err: str):
         msg = QMessageBox(parent)
-        msg.setWindowTitle("Update Check Failed")
-        msg.setIcon(QMessageBox.Icon.Warning)
-        msg.setText("Could not check for updates.")
+        no_release = err.startswith("No releases")
+        msg.setWindowTitle("No Releases Yet" if no_release else "Update Check Failed")
+        msg.setIcon(QMessageBox.Icon.Information if no_release else QMessageBox.Icon.Warning)
+        msg.setText("You're on the latest build." if no_release else "Could not check for updates.")
         msg.setInformativeText(err)
         msg.setStyleSheet(
             "QMessageBox { background: #1e1e2e; color: #ccc; } "
@@ -149,6 +154,15 @@ def check_for_updates_manual(parent: "QWidget | None" = None) -> None:
                 bridge.update_available.emit(tag.lstrip("v"), html_url)
             else:
                 bridge.up_to_date.emit()
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                # No release published yet on GitHub
+                bridge.check_failed.emit(
+                    "No releases have been published yet.\n"
+                    "You are running a development build."
+                )
+            else:
+                bridge.check_failed.emit(f"HTTP Error {exc.code}: {exc.reason}")
         except Exception as exc:
             bridge.check_failed.emit(str(exc))
 

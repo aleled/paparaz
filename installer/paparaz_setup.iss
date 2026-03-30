@@ -74,6 +74,31 @@ Filename: "reg"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVe
   Flags: runhidden; RunOnceId: "RemoveStartup"
 
 [Code]
+{ ── force-kill running instance before install ───────────────────────── }
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+{ Called by Inno Setup before any files are copied.
+  Kills any running PapaRaZ.exe so the installer can overwrite it.
+  Returns '' on success (install proceeds), or an error string to abort. }
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+
+  { Step 1: Graceful shutdown — ask the process to close }
+  Exec('taskkill.exe', '/im {#AppExeName}',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(1000);
+
+  { Step 2: Force-kill anything still running }
+  Exec('taskkill.exe', '/f /im {#AppExeName}',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(500);
+
+  { CloseApplications=yes will catch any remaining handles.
+    Return '' = no error, install proceeds. }
+end;
+
 { ── helpers ─────────────────────────────────────────────────────────── }
 
 function GetInstalledVersion(): String;

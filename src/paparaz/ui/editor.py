@@ -49,9 +49,10 @@ class EditorWindow(QWidget):
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.Tool
+            | Qt.WindowType.Window    # Window (not Tool) so it survives focus loss
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(120, 80)
 
@@ -429,7 +430,19 @@ class EditorWindow(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        # Place the floating side panel at the top-left of the canvas area on first show.
+        # Initialise border-resize event filter (must happen after window is shown)
+        if not getattr(self, "_border_filter_installed", False):
+            self._border_filter_installed = True
+            self._border_cursor_on = False
+        self._install_border_filter()
+        # Pin close button to top-right corner
+        m = 6
+        if hasattr(self, "_close_btn_overlay"):
+            self._close_btn_overlay.move(
+                self.width() - self._close_btn_overlay.width() - m, m
+            )
+            self._close_btn_overlay.raise_()
+        # Place the floating side panel at the top-left of the canvas area on first show
         if not self._panel_initially_placed:
             self._panel_initially_placed = True
             canvas_pos = self._canvas.mapTo(self, QPoint(0, 0))

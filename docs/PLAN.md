@@ -110,14 +110,14 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 
 ---
 
-## Phase 7: Packaging & Distribution - IN PROGRESS
+## Phase 7: Packaging & Distribution - NEARLY COMPLETE
 **Goal**: Installable Windows application.
 
 - [x] 7.1 PyInstaller build configuration (paparaz.spec + build.bat)
-- [ ] 7.2 Windows installer (NSIS or Inno Setup)
-- [ ] 7.3 Auto-start on login option
-- [ ] 7.4 Update checker
-- [ ] 7.5 Application icon and branding assets
+- [x] 7.2 Windows installer (Inno Setup — installer/paparaz_setup.iss)
+- [x] 7.3 Auto-start on login (Windows Registry HKCU\Run, toggled from Settings)
+- [x] 7.4 Update checker (GitHub releases API, background thread, non-blocking dialog)
+- [x] 7.5 Application icon (assets/paparaz.ico — 16/24/32/48/64/128/256 px, version_info.txt)
 - [ ] 7.6 Final testing and bug fixes
 
 ---
@@ -143,6 +143,6 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Not started
 - [x] Completed
 
-## Current Status: Phase 6 nearly complete, Phase 7 in progress
-**Version**: 0.8.0
-**Last updated**: 2026-03-29
+## Current Status: Phase 6 complete, Phase 7 nearly complete (testing remaining)
+**Version**: 0.9.0
+**Last updated**: 2026-03-30

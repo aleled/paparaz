@@ -48,6 +48,12 @@ class PapaRazApp(QObject):
         if self._settings.settings.show_tray_notification:
             self._tray.show_message("PapaRaZ", "Ready! Press PrintScreen to capture.")
         self._hotkey_listener.start()
+        # Check for updates silently after 3 s so UI is fully ready first
+        QTimer.singleShot(3000, self._check_updates)
+
+    def _check_updates(self):
+        from paparaz.utils.updater import check_for_updates
+        check_for_updates()
 
     def _on_hotkey(self, hk_id: int):
         if hk_id == self._capture_hk_id:

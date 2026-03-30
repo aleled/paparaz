@@ -165,7 +165,8 @@ class SettingsDialog(QDialog):
         beh_form.setSpacing(8)
 
         self._start_login = QCheckBox("Launch PapaRaZ at Windows login")
-        self._start_login.setChecked(self._s.start_on_login)
+        from paparaz.utils.startup import get_start_on_login
+        self._start_login.setChecked(get_start_on_login())
         beh_form.addRow("", self._start_login)
 
         self._tray_notify = QCheckBox("Show notification when ready")
@@ -521,6 +522,8 @@ class SettingsDialog(QDialog):
         s.default_format = self._format_combo.currentText()
         s.jpg_quality = self._jpg_quality.value()
         s.start_on_login = self._start_login.isChecked()
+        from paparaz.utils.startup import set_start_on_login
+        set_start_on_login(s.start_on_login)
         s.show_tray_notification = self._tray_notify.isChecked()
         s.default_theme_preset = self._theme_preset_combo.currentData() or ""
 

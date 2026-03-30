@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for PapaRaZ
+# PyInstaller spec for PapaRaZ v0.8.0
 
 block_cipher = None
 
@@ -7,15 +7,38 @@ a = Analysis(
     ['src/paparaz/__main__.py'],
     pathex=['src'],
     binaries=[],
-    datas=[],
+    datas=[
+        ('assets/paparaz.ico', 'assets'),
+    ],
     hiddenimports=[
+        # PySide6 SVG support
         'PySide6.QtSvg',
         'PySide6.QtSvgWidgets',
+        # winrt OCR packages
+        'winrt.windows.media.ocr',
+        'winrt.windows.graphics.imaging',
+        'winrt.windows.storage',
+        'winrt.windows.storage.streams',
+        'winrt.windows.foundation',
+        'winrt.windows.foundation.collections',
+        'winrt.windows.globalization',
+        # Windows utilities
+        'winreg',
+        'ctypes',
+        'ctypes.wintypes',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'tkinter',
+        'matplotlib',
+        'numpy',
+        'scipy',
+        'IPython',
+        'jupyter',
+        'notebook',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -43,5 +66,6 @@ exe = EXE(
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
-    icon=None,
+    icon='assets/paparaz.ico',
+    version='version_info.txt',
 )

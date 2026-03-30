@@ -161,6 +161,9 @@ class SidePanel(QWidget):
     text_direction_changed = Signal(str)
     text_bg_enabled_changed = Signal(bool)
     text_bg_color_changed = Signal(str)
+    text_stroke_enabled_changed = Signal(bool)
+    text_stroke_color_changed = Signal(str)
+    text_stroke_width_changed = Signal(float)
     mode_changed = Signal(str)   # 'auto', 'pinned', 'hidden'
     recent_colors_changed = Signal(list)  # emitted when palette changes
 
@@ -424,6 +427,22 @@ class SidePanel(QWidget):
         tbr.addWidget(self._text_bg_btn)
         tbr.addStretch()
         tl.addLayout(tbr)
+        # Stroke / outline row
+        self._text_stroke_color = "#000000"
+        tsr = QHBoxLayout()
+        tsr.setSpacing(3)
+        self._text_stroke_check = QCheckBox("Outline")
+        self._text_stroke_check.toggled.connect(lambda v: self._emit_if_not_loading(self.text_stroke_enabled_changed, v))
+        self._text_stroke_btn = self._color_btn(self._text_stroke_color, self._pick_text_stroke_color, "Outline color")
+        tsr.addWidget(self._text_stroke_check)
+        tsr.addWidget(self._text_stroke_btn)
+        tsr.addStretch()
+        tl.addLayout(tsr)
+        self._text_stroke_width_slider, self._text_stroke_width_label, tsw_row = \
+            self._make_slider_row("Width", 1, 20, 4, "")
+        self._text_stroke_width_slider.valueChanged.connect(
+            lambda v: self._emit_if_not_loading(self.text_stroke_width_changed, v * 0.5))
+        tl.addWidget(tsw_row)
         self._text_widget = self._wrap_layout(tl)
         self._layout.addWidget(self._text_widget)
 
@@ -867,6 +886,10 @@ class SidePanel(QWidget):
                 self._text_bg_check.setChecked(element.bg_enabled)
                 self._text_bg_color = element.bg_color
                 self._update_swatch(self._text_bg_btn, element.bg_color)
+                self._text_stroke_check.setChecked(element.stroke_enabled)
+                self._text_stroke_color = element.stroke_color
+                self._update_swatch(self._text_stroke_btn, element.stroke_color)
+                self._text_stroke_width_slider.setValue(int(element.stroke_width * 2))
                 if element.alignment == Qt.AlignmentFlag.AlignCenter:
                     self._align_btns["center"].setChecked(True)
                 elif element.alignment == Qt.AlignmentFlag.AlignRight:
@@ -1053,6 +1076,14 @@ class SidePanel(QWidget):
             self._update_swatch(self._text_bg_btn, self._text_bg_color)
             self._recent_palette.add_color(self._text_bg_color)
             self.text_bg_color_changed.emit(self._text_bg_color)
+
+    def _pick_text_stroke_color(self):
+        c = QColorDialog.getColor(QColor(self._text_stroke_color), self, "Outline Color")
+        if c.isValid():
+            self._text_stroke_color = c.name()
+            self._update_swatch(self._text_stroke_btn, self._text_stroke_color)
+            self._recent_palette.add_color(self._text_stroke_color)
+            self._emit_if_not_loading(self.text_stroke_color_changed, self._text_stroke_color)
 
     def _pick_shadow_color(self):
         c = QColorDialog.getColor(QColor(self._shadow_color), self, "Shadow",

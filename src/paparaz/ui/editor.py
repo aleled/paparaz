@@ -192,6 +192,9 @@ class EditorWindow(QWidget):
         self._side_panel.text_direction_changed.connect(self._on_text_direction)
         self._side_panel.text_bg_enabled_changed.connect(self._on_text_bg_enabled)
         self._side_panel.text_bg_color_changed.connect(self._on_text_bg_color)
+        self._side_panel.text_stroke_enabled_changed.connect(self._on_text_stroke_enabled)
+        self._side_panel.text_stroke_color_changed.connect(self._on_text_stroke_color)
+        self._side_panel.text_stroke_width_changed.connect(self._on_text_stroke_width)
 
         # Rotation slider -> update selected element
         self._side_panel.rotation_changed.connect(self._canvas.set_rotation)
@@ -699,6 +702,21 @@ class EditorWindow(QWidget):
         self._text_tool.set_bg_color(c)
         e = self._canvas.selected_element
         if isinstance(e, TextElement): e.bg_color = c; self._canvas.update()
+
+    def _on_text_stroke_enabled(self, v):
+        self._text_tool.set_stroke_enabled(v)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.stroke_enabled = v; self._canvas.update()
+
+    def _on_text_stroke_color(self, c):
+        self._text_tool.set_stroke_color(c)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.stroke_color = c; self._canvas.update()
+
+    def _on_text_stroke_width(self, w):
+        self._text_tool.set_stroke_width(w)
+        e = self._canvas.selected_element
+        if isinstance(e, TextElement): e.stroke_width = w; self._canvas.update()
 
     # --- Canvas resize dialog ---
 

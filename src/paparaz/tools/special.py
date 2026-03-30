@@ -37,6 +37,9 @@ class TextTool(BaseTool):
         self.direction = Qt.LayoutDirection.LeftToRight
         self.bg_enabled = False
         self.bg_color = "#FFFF00"
+        self.stroke_enabled = False
+        self.stroke_color   = "#000000"
+        self.stroke_width   = 2.0
         # Assigned by the editor; called with True when editing starts, False when done.
         self.on_editing_changed = None
 
@@ -261,8 +264,11 @@ class TextTool(BaseTool):
         self.strikethrough = element.strikethrough
         self.alignment = element.alignment
         self.direction = element.direction
-        self.bg_enabled = element.bg_enabled
-        self.bg_color = element.bg_color
+        self.bg_enabled     = element.bg_enabled
+        self.bg_color       = element.bg_color
+        self.stroke_enabled = element.stroke_enabled
+        self.stroke_color   = element.stroke_color
+        self.stroke_width   = element.stroke_width
         self._begin_editing(element)
         self.canvas.set_preview(element)
         self.canvas.setFocus()
@@ -282,8 +288,29 @@ class TextTool(BaseTool):
         elem.strikethrough = self.strikethrough
         elem.alignment = self.alignment
         elem.direction = self.direction
-        elem.bg_enabled = self.bg_enabled
-        elem.bg_color = self.bg_color
+        elem.bg_enabled     = self.bg_enabled
+        elem.bg_color       = self.bg_color
+        elem.stroke_enabled = self.stroke_enabled
+        elem.stroke_color   = self.stroke_color
+        elem.stroke_width   = self.stroke_width
+
+    def set_stroke_enabled(self, enabled: bool):
+        self.stroke_enabled = enabled
+        if self._active_text:
+            self._active_text.stroke_enabled = enabled
+            self.canvas.set_preview(self._active_text)
+
+    def set_stroke_color(self, color: str):
+        self.stroke_color = color
+        if self._active_text:
+            self._active_text.stroke_color = color
+            self.canvas.set_preview(self._active_text)
+
+    def set_stroke_width(self, width: float):
+        self.stroke_width = width
+        if self._active_text:
+            self._active_text.stroke_width = width
+            self.canvas.set_preview(self._active_text)
 
     def set_bold(self, enabled: bool):
         self.bold = enabled

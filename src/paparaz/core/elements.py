@@ -684,6 +684,10 @@ class TextElement(AnnotationElement):
         self.bg_enabled = False
         self.bg_color = "#FFFF00"
         self.bg_padding = 4
+        # Outline / stroke
+        self.stroke_enabled = False
+        self.stroke_color   = "#000000"
+        self.stroke_width   = 2.0
         # Cursor and selection state (only meaningful during editing)
         self.cursor_pos: int = 0   # insertion point (0 = before first char)
         self.sel_start: int = -1   # -1 = no selection; otherwise anchor end
@@ -852,7 +856,7 @@ class TextElement(AnnotationElement):
             else:
                 baseline_x = rect.left() + pad
 
-            # Shadow
+            # Shadow (drawn first, behind everything)
             if self.style.shadow.enabled:
                 painter.setPen(QColor(self.style.shadow.color))
                 painter.drawText(
@@ -860,7 +864,22 @@ class TextElement(AnnotationElement):
                             baseline_y + self.style.shadow.offset_y),
                     line)
 
-            # Text
+            # Stroke / outline (drawn behind fill text)
+            if self.stroke_enabled and line:
+                stroke_path = QPainterPath()
+                stroke_path.addText(QPointF(baseline_x, baseline_y), font, line)
+                stroke_pen = QPen(QColor(self.stroke_color),
+                                  self.stroke_width * 2,  # centred stroke → ×2 so outer half shows
+                                  Qt.PenStyle.SolidLine,
+                                  Qt.PenCapStyle.RoundCap,
+                                  Qt.PenJoinStyle.RoundJoin)
+                painter.save()
+                painter.setPen(stroke_pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawPath(stroke_path)
+                painter.restore()
+
+            # Text fill (drawn on top of stroke)
             painter.setPen(QColor(self.style.foreground_color))
             painter.drawText(QPointF(baseline_x, baseline_y), line)
 
@@ -922,8 +941,11 @@ class TextElement(AnnotationElement):
         d["italic"] = self.italic
         d["underline"] = self.underline
         d["strikethrough"] = self.strikethrough
-        d["bg_enabled"] = self.bg_enabled
-        d["bg_color"] = self.bg_color
+        d["bg_enabled"]     = self.bg_enabled
+        d["bg_color"]       = self.bg_color
+        d["stroke_enabled"] = self.stroke_enabled
+        d["stroke_color"]   = self.stroke_color
+        d["stroke_width"]   = self.stroke_width
         return d
 
 

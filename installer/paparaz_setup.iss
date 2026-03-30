@@ -90,22 +90,6 @@ begin
   Result := Ver;
 end;
 
-{ ── guard: exe must exist ────────────────────────────────────────────── }
-
-function InitializeSetup(): Boolean;
-begin
-  if not FileExists(ExpandConstant('{src}\..\dist\{#AppExeName}')) then
-  begin
-    MsgBox(
-      'PapaRaZ.exe not found in dist\.' + #13#10 +
-      'Please run build.bat first to create the executable.',
-      mbError, MB_OK
-    );
-    Result := False;
-  end else
-    Result := True;
-end;
-
 { ── wizard customisation ─────────────────────────────────────────────── }
 
 procedure InitializeWizard();

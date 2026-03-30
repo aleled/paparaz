@@ -22,7 +22,7 @@ class PapaRazApp(QObject):
         self._app = app
         self._settings = SettingsManager()
 
-        self._tray = TrayIcon()
+        self._tray = TrayIcon(icon_color=self._settings.settings.tray_icon_color)
         self._overlay = None
         self._editors: list[EditorWindow] = []
         self._full_capture = None
@@ -39,6 +39,7 @@ class PapaRazApp(QObject):
         self._tray.open_image_requested.connect(self._open_image)
         self._tray.open_recent_requested.connect(self._open_recent)
         self._tray.settings_requested.connect(self._show_settings)
+        self._tray.check_updates_requested.connect(self._check_updates_manual)
         self._tray.quit_requested.connect(self._quit)
         self._hotkey_listener.hotkey_pressed.connect(self._on_hotkey)
 
@@ -52,8 +53,14 @@ class PapaRazApp(QObject):
         QTimer.singleShot(3000, self._check_updates)
 
     def _check_updates(self):
-        from paparaz.utils.updater import check_for_updates
-        check_for_updates()
+        if self._settings.settings.auto_check_updates:
+            from paparaz.utils.updater import check_for_updates
+            check_for_updates()
+
+    def _check_updates_manual(self):
+        """Explicit user-triggered update check — always runs, shows 'up to date' message."""
+        from paparaz.utils.updater import check_for_updates_manual
+        check_for_updates_manual()
 
     def _on_hotkey(self, hk_id: int):
         if hk_id == self._capture_hk_id:

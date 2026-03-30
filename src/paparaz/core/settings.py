@@ -52,9 +52,11 @@ class AppSettings:
     # Last applied theme preset ID ("" = none applied)
     default_theme_preset: str = ""
     app_theme: str = "dark"
+    tray_icon_color: str = "#E53935"   # red default
     shadow_default_offset_x: float = 3.0
     shadow_default_offset_y: float = 3.0
     shadow_default_blur: float = 5.0
+    auto_check_updates: bool = True
 
 
 class SettingsManager:

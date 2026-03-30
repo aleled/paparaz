@@ -4,14 +4,32 @@ from PySide6.QtWidgets import QSystemTrayIcon, QMenu
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction
 from PySide6.QtCore import Signal, QObject
 
+# Tray icon color options shown in Settings → Appearance
+TRAY_ICON_COLORS = {
+    "#E53935": "Red",
+    "#740096": "Purple",
+    "#1565C0": "Blue",
+    "#2E7D32": "Green",
+    "#212121": "Dark",
+}
 
-def create_default_icon() -> QIcon:
+_BORDER_DARKEN = {
+    "#E53935": "#B71C1C",
+    "#740096": "#4a005f",
+    "#1565C0": "#0d3c77",
+    "#2E7D32": "#1b5e20",
+    "#212121": "#000000",
+}
+
+
+def create_default_icon(color: str = "#E53935") -> QIcon:
+    border = _BORDER_DARKEN.get(color, "#000000")
     pix = QPixmap(32, 32)
     pix.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pix)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor("#E53935"))
-    painter.setPen(QColor("#B71C1C"))
+    painter.setBrush(QColor(color))
+    painter.setPen(QColor(border))
     painter.drawRoundedRect(2, 2, 28, 28, 6, 6)
     painter.setPen(QColor("#FFFFFF"))
     painter.setFont(QFont("Arial", 11, QFont.Weight.Bold))
@@ -26,11 +44,12 @@ class TrayIcon(QObject):
     open_image_requested = Signal()
     open_recent_requested = Signal(str)  # file path
     settings_requested = Signal()
+    check_updates_requested = Signal()
     quit_requested = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, icon_color: str = "#E53935"):
         super().__init__(parent)
-        self._icon = QSystemTrayIcon(create_default_icon(), parent)
+        self._icon = QSystemTrayIcon(create_default_icon(icon_color), parent)
         self._icon.setToolTip("PapaRaZ - Screen Capture")
         self._recent_paths: list[str] = []
         self._build_menu()
@@ -65,6 +84,9 @@ class TrayIcon(QObject):
         settings_action = self._menu.addAction("Settings")
         settings_action.triggered.connect(self.settings_requested.emit)
 
+        check_action = self._menu.addAction("Check for Updates...")
+        check_action.triggered.connect(self.check_updates_requested.emit)
+
         self._menu.addSeparator()
 
         quit_action = self._menu.addAction("Quit")
@@ -90,6 +112,9 @@ class TrayIcon(QObject):
     def _on_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.capture_requested.emit()
+
+    def set_icon_color(self, color: str):
+        self._icon.setIcon(create_default_icon(color))
 
     def show(self):
         self._icon.show()

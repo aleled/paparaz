@@ -5,7 +5,7 @@
 #define AppName      "PapaRaZ"
 #define AppVersion   "0.8.0"
 #define AppPublisher "Alejandro Lichtenfeld"
-#define AppURL       "https://github.com/lichtenfeld/paparaz"
+#define AppURL       "https://github.com/aleled/paparaz"
 #define AppExeName   "PapaRaZ.exe"
 #define AppIcon      "..\assets\paparaz.ico"
 #define ExeSource    "..\dist\PapaRaZ.exe"

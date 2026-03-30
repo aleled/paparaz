@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QColorDialog, QCheckBox, QFontComboBox,
     QScrollArea,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QPoint, QRect
+from PySide6.QtCore import Qt, Signal, QTimer, QPoint, QRect, QEvent
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap, QIcon, QPalette, QPen
 
 from paparaz.tools.base import ToolType
@@ -36,8 +36,18 @@ PANEL_WIDTH = 186
 AUTO_HIDE_DELAY_MS = 3000  # ms before auto-hide triggers after deselect
 
 PANEL_STYLE = """
-QWidget#sidePanel { background: transparent; }
-QWidget#panelHeader { background: #111122; border-bottom: 1px solid #444; }
+QWidget#sidePanel {
+    background: #1a1a2e;
+    border: 1px solid #3a3a4e;
+    border-radius: 4px;
+}
+QWidget#panelHeader {
+    background: #111122;
+    border-bottom: 1px solid #444;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    cursor: move;
+}
 QLabel { color: #aaa; font-size: 11px; padding: 0; margin: 0; }
 QLabel#sectionTitle {
     color: #666; font-size: 10px; font-weight: bold;
@@ -155,6 +165,7 @@ class SidePanel(QWidget):
         self.setObjectName("sidePanel")
         self.setStyleSheet(PANEL_STYLE + combo_arrow_css())
         self.setFixedWidth(PANEL_WIDTH)
+        self.resize(PANEL_WIDTH, 500)  # default floating height
         # Floating overlay: must own its background paint explicitly
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
@@ -231,7 +242,19 @@ class SidePanel(QWidget):
         self._pin_close_btn.clicked.connect(self._on_close_clicked)
         hdr_layout.addWidget(self._pin_close_btn)
 
+        # Drag label in header centre (shows user they can drag here)
+        self._drag_label = QLabel("⠿ Properties")
+        self._drag_label.setStyleSheet(
+            "color: #555; font-size: 9px; padding: 0; background: transparent;"
+        )
+        self._drag_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hdr_layout.insertWidget(1, self._drag_label)
+
         self._update_mode_btn_text()
+
+        # Drag support: track mouse on header background to move the panel
+        self._drag_offset = None
+        self._header.installEventFilter(self)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -851,6 +874,10 @@ class SidePanel(QWidget):
     def mode(self) -> str:
         return self._mode
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.raise_()
+
     def set_mode(self, mode: str):
         """Set panel mode: 'auto', 'pinned', or 'hidden'."""
         self._mode = mode
@@ -862,6 +889,22 @@ class SidePanel(QWidget):
             self.show()
         # 'auto': visibility managed by on_element_selected
         self.mode_changed.emit(mode)
+
+    def eventFilter(self, obj, event):
+        """Drag the floating panel by pressing on the header background."""
+        if obj is self._header:
+            et = event.type()
+            if et == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                self._drag_offset = event.globalPosition().toPoint() - self.mapToGlobal(QPoint(0, 0))
+            elif et == QEvent.Type.MouseMove and event.buttons() & Qt.MouseButton.LeftButton:
+                if self._drag_offset is not None:
+                    new_pos = event.globalPosition().toPoint() - self._drag_offset
+                    if self.parent():
+                        new_pos = self.parent().mapFromGlobal(new_pos)
+                    self.move(new_pos)
+            elif et == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+                self._drag_offset = None
+        return False  # never consume — buttons still receive their own events
 
     def _cycle_mode(self):
         order = ["auto", "pinned", "hidden"]

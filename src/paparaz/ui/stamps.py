@@ -39,20 +39,20 @@ STAMPS = {
     },
     "approved": {
         "label": "APPROVED",
-        "svg": """<svg viewBox="0 0 64 64">
+        "svg": """<svg viewBox="0 0 64 64" overflow="hidden">
             <rect x="2" y="16" width="60" height="32" rx="6"
                   fill="none" stroke="#4CAF50" stroke-width="3" opacity="0.9"/>
-            <text x="32" y="38" text-anchor="middle" fill="#4CAF50"
-                  font-size="14" font-weight="bold" font-family="Arial">APPROVED</text>
+            <text x="32" y="37" text-anchor="middle" fill="#4CAF50"
+                  font-size="11" font-weight="bold" font-family="Arial">APPROVED</text>
         </svg>""",
     },
     "rejected": {
         "label": "REJECTED",
-        "svg": """<svg viewBox="0 0 64 64">
+        "svg": """<svg viewBox="0 0 64 64" overflow="hidden">
             <rect x="2" y="16" width="60" height="32" rx="6"
                   fill="none" stroke="#F44336" stroke-width="3" opacity="0.9"/>
-            <text x="32" y="38" text-anchor="middle" fill="#F44336"
-                  font-size="14" font-weight="bold" font-family="Arial">REJECTED</text>
+            <text x="32" y="37" text-anchor="middle" fill="#F44336"
+                  font-size="11" font-weight="bold" font-family="Arial">REJECTED</text>
         </svg>""",
     },
     "star": {
@@ -89,7 +89,7 @@ STAMPS = {
         </svg>""",
     },
     "question": {
-        "label": "? Question",
+        "label": "? Question Mark",
         "svg": """<svg viewBox="0 0 64 64">
             <circle cx="32" cy="32" r="28" fill="#9C27B0" opacity="0.9"/>
             <text x="32" y="44" text-anchor="middle" fill="white"
@@ -114,21 +114,21 @@ STAMPS = {
     },
     "priority": {
         "label": "\u26A1 Priority",
-        "svg": """<svg viewBox="0 0 64 64">
+        "svg": """<svg viewBox="0 0 64 64" overflow="hidden">
             <rect x="6" y="6" width="52" height="52" rx="8" fill="#FF5722" opacity="0.9"/>
-            <text x="32" y="28" text-anchor="middle" fill="white"
-                  font-size="12" font-weight="bold" font-family="Arial">HIGH</text>
-            <text x="32" y="46" text-anchor="middle" fill="#FFEB3B"
-                  font-size="14" font-weight="bold" font-family="Arial">PRIORITY</text>
+            <text x="32" y="27" text-anchor="middle" fill="white"
+                  font-size="11" font-weight="bold" font-family="Arial">HIGH</text>
+            <text x="32" y="44" text-anchor="middle" fill="#FFEB3B"
+                  font-size="11" font-weight="bold" font-family="Arial">PRIORITY</text>
         </svg>""",
     },
     "bug": {
         "label": "\U0001F41B Bug",
-        "svg": """<svg viewBox="0 0 64 64">
-            <circle cx="32" cy="34" r="20" fill="#F44336" opacity="0.85"/>
+        "svg": """<svg viewBox="0 0 64 64" overflow="hidden">
+            <circle cx="32" cy="36" r="20" fill="#F44336" opacity="0.85"/>
             <circle cx="32" cy="18" r="10" fill="#D32F2F"/>
             <text x="32" y="42" text-anchor="middle" fill="white"
-                  font-size="14" font-weight="bold" font-family="Arial">BUG</text>
+                  font-size="13" font-weight="bold" font-family="Arial">BUG</text>
         </svg>""",
     },
     "note": {

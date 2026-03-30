@@ -20,11 +20,10 @@ if TYPE_CHECKING:
 
 __version__ = "0.8.0"
 
-# Update this when the repo is published
 _GITHUB_API_URL = (
-    "https://api.github.com/repos/lichtenfeld/paparaz/releases/latest"
+    "https://api.github.com/repos/aleled/paparaz/releases/latest"
 )
-_RELEASES_PAGE = "https://github.com/lichtenfeld/paparaz/releases"
+_RELEASES_PAGE = "https://github.com/aleled/paparaz/releases"
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:
@@ -37,7 +36,9 @@ def _parse_version(tag: str) -> tuple[int, ...]:
 
 
 class _UpdateBridge(QObject):
-    update_available = Signal(str, str)  # (latest_version, release_url)
+    update_available = Signal(str, str)   # (latest_version, release_url)
+    up_to_date       = Signal()
+    check_failed     = Signal(str)        # error message
 
 
 def check_for_updates(parent: "QWidget | None" = None, silent: bool = True) -> None:
@@ -86,6 +87,74 @@ def check_for_updates(parent: "QWidget | None" = None, silent: bool = True) -> N
 
 # Keep references alive so GC doesn't collect them before the thread finishes
 _check_for_updates_refs: list = []
+
+
+def check_for_updates_manual(parent: "QWidget | None" = None) -> None:
+    """User-triggered update check — always shows a result (update, up-to-date, or error)."""
+    bridge = _UpdateBridge(parent=parent)
+
+    def on_update(latest: str, url: str):
+        _show_update_dialog(parent, latest, url)
+        bridge.deleteLater()
+
+    def on_up_to_date():
+        msg = QMessageBox(parent)
+        msg.setWindowTitle("Up to Date")
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText(f"PapaRaZ v{__version__} is the latest version.")
+        msg.setStyleSheet(
+            "QMessageBox { background: #1e1e2e; color: #ccc; } "
+            "QLabel { color: #ccc; } "
+            "QPushButton { background: #740096; color: #fff; border: none; "
+            "              padding: 5px 14px; border-radius: 3px; } "
+        )
+        msg.exec()
+        bridge.deleteLater()
+
+    def on_failed(err: str):
+        msg = QMessageBox(parent)
+        msg.setWindowTitle("Update Check Failed")
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setText("Could not check for updates.")
+        msg.setInformativeText(err)
+        msg.setStyleSheet(
+            "QMessageBox { background: #1e1e2e; color: #ccc; } "
+            "QLabel { color: #ccc; } "
+            "QPushButton { background: #740096; color: #fff; border: none; "
+            "              padding: 5px 14px; border-radius: 3px; } "
+        )
+        msg.exec()
+        bridge.deleteLater()
+
+    bridge.update_available.connect(on_update)
+    bridge.up_to_date.connect(on_up_to_date)
+    bridge.check_failed.connect(on_failed)
+
+    def _worker():
+        try:
+            req = urllib.request.Request(
+                _GITHUB_API_URL,
+                headers={"User-Agent": f"PapaRaZ/{__version__}"},
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read())
+            tag = data.get("tag_name", "")
+            html_url = data.get("html_url", _RELEASES_PAGE)
+            if not tag:
+                bridge.check_failed.emit("No release tag found in GitHub response.")
+                return
+            latest = _parse_version(tag)
+            current = _parse_version(__version__)
+            if latest > current:
+                bridge.update_available.emit(tag.lstrip("v"), html_url)
+            else:
+                bridge.up_to_date.emit()
+        except Exception as exc:
+            bridge.check_failed.emit(str(exc))
+
+    t = threading.Thread(target=_worker, daemon=True)
+    _check_for_updates_refs.append((t, bridge))
+    t.start()
 
 
 def _show_update_dialog(parent: "QWidget | None", latest: str, url: str):

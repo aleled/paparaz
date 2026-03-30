@@ -13,7 +13,7 @@ from paparaz.ui.icons import get_icon
 
 from paparaz.ui.canvas import AnnotationCanvas
 from paparaz.ui.toolbar import MultiEdgeToolbar
-from paparaz.ui.side_panel import SidePanel, PANEL_WIDTH
+from paparaz.ui.side_panel import SidePanel
 from paparaz.tools.base import ToolType
 from paparaz.tools.select import SelectTool
 from paparaz.tools.drawing import (
@@ -45,7 +45,6 @@ class EditorWindow(QWidget):
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -61,17 +60,10 @@ class EditorWindow(QWidget):
         self._multi_toolbar = MultiEdgeToolbar(self)
         layout.addWidget(self._multi_toolbar.top_strip)
 
-        # Docked side panel — lives in the body layout LEFT of canvas.
-        # Never covers canvas content; collapses when hidden.
-        self._side_panel = SidePanel(parent=None)
-        self._side_panel.setFixedWidth(PANEL_WIDTH)
-        self._side_panel.hide()
-
-        # Body: [side panel] + canvas + right strip
+        # Body: canvas + right strip (side panel is a floating overlay, not in layout)
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(2)
-        body.addWidget(self._side_panel)
 
         self._canvas = AnnotationCanvas(screenshot)
         body.addWidget(self._canvas, 1)
@@ -81,6 +73,12 @@ class EditorWindow(QWidget):
         layout.addLayout(body, 1)
 
         layout.addWidget(self._multi_toolbar.bottom_strip)
+
+        # Floating side panel — overlay on top of canvas, not in layout.
+        # Showing/hiding it never shifts the canvas.
+        self._side_panel = SidePanel(parent=self)
+        self._side_panel.hide()
+        self._panel_initially_placed = False  # set True after first show + layout pass
 
         # Track current tool type for per-tool property persistence
         self._current_tool_type = ToolType.SELECT
@@ -364,18 +362,14 @@ class EditorWindow(QWidget):
     # --- Element selection -> side panel ---
 
     def _on_element_selected(self, element):
-        if element:
-            self._side_panel.on_element_selected(element)
-            self._side_panel.show()
-        else:
-            self._side_panel.on_element_selected(None)
+        self._side_panel.on_element_selected(element)
 
     def _on_panel_mode_changed(self, mode: str):
         if mode == "hidden":
             self._side_panel.hide()
 
     def _show_tool_props(self, tool_type: ToolType, global_pos: QPoint):
-        """Show the docked props panel with the given tool's sections."""
+        """Show the floating props panel with the given tool's sections."""
         self._side_panel.update_for_tool(tool_type)
         self._load_tool_properties(tool_type)
         self._side_panel.show()
@@ -429,6 +423,14 @@ class EditorWindow(QWidget):
         self._save_tool_properties(self._current_tool_type)
         self._settings_save_timer.start()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Place the floating side panel at the top-left of the canvas area on first show.
+        if not self._panel_initially_placed:
+            self._panel_initially_placed = True
+            canvas_pos = self._canvas.mapTo(self, QPoint(0, 0))
+            self._side_panel.move(canvas_pos.x() + 4, canvas_pos.y() + 4)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._multi_toolbar.relayout(self.width(), self.height(), 0)
@@ -442,6 +444,15 @@ class EditorWindow(QWidget):
         # Re-scan children so reparented buttons always have the border filter
         if getattr(self, "_border_filter_installed", False):
             self._install_border_filter()
+        # Keep floating side panel within editor bounds
+        if hasattr(self, "_side_panel"):
+            p = self._side_panel.pos()
+            pw = self._side_panel.width()
+            ph = self._side_panel.height()
+            x = max(0, min(p.x(), self.width() - pw))
+            y = max(0, min(p.y(), self.height() - ph))
+            if (x, y) != (p.x(), p.y()):
+                self._side_panel.move(x, y)
 
     def _on_text_edit_request(self, element):
         if isinstance(element, TextElement):

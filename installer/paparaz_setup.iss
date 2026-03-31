@@ -8,7 +8,7 @@
 #define AppURL       "https://github.com/aleled/paparaz"
 #define AppExeName   "PapaRaZ.exe"
 #define AppIcon      "..\assets\paparaz.ico"
-#define ExeSource    "..\dist\PapaRaZ.exe"
+#define DistDir      "..\dist\PapaRaZ"
 
 [Setup]
 AppId={{E2F4A1B3-7C6D-4E5F-8A9B-0D1E2F3A4B5C}
@@ -51,7 +51,8 @@ Name: "desktopicon";  Description: "{cm:CreateDesktopIcon}";                    
 Name: "startupentry"; Description: "Start {#AppName} automatically at Windows login"; GroupDescription: "Startup:";             Flags: unchecked
 
 [Files]
-Source: "{#ExeSource}"; DestDir: "{app}"; Flags: ignoreversion
+; Install the entire onedir bundle — all DLLs, PySide6 plugins, assets, etc.
+Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}";             Filename: "{app}\{#AppExeName}"

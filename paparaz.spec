@@ -1,5 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for PapaRaZ v0.9.1
+# PyInstaller spec for PapaRaZ — onedir mode
+#
+# onedir is used instead of onefile because python313.dll (Microsoft Store
+# Python) cannot be loaded via LoadLibrary when extracted to a _MEI temp
+# directory.  Installing as a folder lets Windows find all DLL dependencies
+# from the application directory directly.
 
 block_cipher = None
 
@@ -8,8 +13,7 @@ a = Analysis(
     pathex=['src'],
     binaries=[
         # python313.dll lives inside the protected WindowsApps directory on
-        # Microsoft Store Python installs and PyInstaller can't find it
-        # automatically — bundle it explicitly.
+        # Microsoft Store Python installs — bundle it explicitly.
         ('python313.dll', '.'),
     ],
     datas=[
@@ -55,17 +59,14 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
+    [],                    # empty in onedir — files go into COLLECT below
+    exclude_binaries=True,
     name='PapaRaZ',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -73,4 +74,15 @@ exe = EXE(
     codesign_identity=None,
     icon='assets/paparaz.ico',
     version='version_info.txt',
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='PapaRaZ',
 )

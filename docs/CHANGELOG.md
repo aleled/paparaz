@@ -1,5 +1,65 @@
 # PapaRaZ - Changelog
 
+## [0.9.5] - 2026-03-31
+
+### Properties Panel — Complete UX Overhaul
+
+#### Wider, Unclipped Layout
+- `PANEL_WIDTH` raised from 186 → 260 px — all rows now have breathing room; nothing is clipped
+- Cap / Join rows changed from a cramped single side-by-side layout to two stacked rows (`Cap: [combo]`, `Join: [combo]`), each with a full-width dropdown
+
+#### New Header Bar (24 px → 40 px)
+- **Title label** (13 px bold): shows "Properties" by default; dynamically updates to the selected element type ("Text", "Rectangle", "Arrow", etc.) when an element is selected
+- **📌 Pin toggle** (40 × 28 px, clearly labeled): checked = panel stays open always (pinned); unchecked = panel auto-hides 3 s after deselect (auto). Tooltip explains both states. Replaces the tiny ambiguous cycle-mode button.
+- **✕ Close** (28 × 28 px): hides the panel and sets hidden mode. Tooltip explains how to re-open via the grip tab on the canvas edge.
+- Drag grip `⠿` on the left with `SizeAllCursor` and tooltip.
+- All header buttons re-skinned on theme change to match current accent.
+
+#### Element Preview Strip
+- 80 px strip between the header and the property controls
+- Renders the selected element scaled and centered using its own `paint()` method — correct colors, stroke weight, shadow, and rotation
+- Shows "No selection" placeholder when nothing is selected
+- Updates automatically whenever an element is selected or deselected
+
+#### Format Buttons — Labeled
+- Bold / Italic / Underline / Strikethrough buttons now show **B**, **I**, **U**, **S̶** text labels (matching font style) instead of being icon-only — users can now tell what they do without hovering
+- Alignment buttons show `≡←`, `≡`, `≡→` symbols; direction buttons show `LTR` / `RTL` text
+- All format buttons enlarged to 24–28 px
+
+#### Recent Colors Section
+- "RECENT COLORS" section title added above the palette with a tooltip: "Left-click to set foreground color · Right-click to set background color"
+- Users no longer encounter an unlabeled row of checkerboard-backed swatches with no context
+
+### Panel Initial Placement
+- On first show the panel now appears **to the right of the editor window** (10 px gap) rather than overlapping the canvas working area
+- Falls back to the left side if the right side has insufficient screen space
+
+### Properties — Dependent Controls & Consolidation
+- Shadow: single linked **Blur** slider by default; `≠` unlink button reveals independent **Blur X** / **Blur Y** sliders; auto-unlinks when an element with different X/Y blur values is loaded
+- Text background and outline color swatches are **disabled (30% opacity)** when their toggle is OFF — visual affordance that they have no effect
+- Outline width row **hides entirely** when outline is toggled OFF
+
+### QCheckBox → Toggle Buttons (All Surfaces)
+- Every `QCheckBox` in `side_panel.py` replaced with `QToolButton#toggleBtn` (checkable, labeled, 22 px tall) — eliminates confusion between color swatches and checkboxes that were indistinguishable side by side
+- Every `QCheckBox` in `settings_dialog.py` replaced with `QPushButton#toggleSetting` (full-width, styled pill, left-aligned text, purple left-border when checked)
+
+### Text Tool — Major Enhancement
+- **Click-to-position cursor**: clicking inside an existing text element moves the cursor to the exact character position (maps click X/Y through `_build_visual_lines()` → line index → character offset, alignment-aware)
+- **Resize handle**: purple grip on the right edge of the text box; drag horizontally to change the box width live
+- **Up/Down navigation**: arrow keys move across visual lines preserving a `_nav_x_hint` (x-coordinate memory like a real text editor)
+- **Word navigation**: Ctrl+Left/Right jumps word boundaries
+- **Home/End**: moves to visual line start/end; Ctrl+Home/End jumps to document start/end
+- **Font size** max raised from 72 → 120 pt
+- **Hover preview**: shows "Aa" in the current font/color/style instead of a generic "T"
+
+### Window Border Contrast
+- Editor `paintEvent` draws multi-layer outline: outer dark shadow rings (black 100/50 alpha) + dark fill + theme accent border — window is now clearly distinct from any desktop background color
+
+### Side Panel — Auto-Show on Tool Switch
+- Panel auto-shows (if not in hidden mode) when switching to a tool that has configurable properties (any tool with color, stroke, effects, text, mask, number, stamp, or fill sections)
+
+---
+
 ## [0.9.4] - 2026-03-31
 
 ### Precision Movement (Arrow Keys)

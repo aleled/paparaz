@@ -123,21 +123,26 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 ---
 
 ## Future Enhancements (Backlog)
-- [x] Custom color palette / recent colors (side panel, persisted to settings)
+- [x] Custom color palette / recent colors (side panel, labeled, persisted to settings)
 - [x] Eyedropper / color grab tool — live loupe, fg/bg pick, auto-return to prev tool (I)
-- [ ] Layers panel (element z-ordering with drag)
 - [x] Text outline / stroke on text — QPainterPath, side panel Outline section
 - [x] Curved arrows / Bezier curves — CurvedArrowElement, 3-click workflow, tangent arrowhead (Q)
 - [x] Stamp/emoji tool (32 SVG stamps: 16 original + 10 transparent-bg variants + 6 utility text stamps: WIP, DRAFT, TODO, DONE, FIX, NEW)
+- [x] Properties panel UX overhaul — 260 px wide, element preview strip, labeled format buttons, pin/close header, auto-show on tool switch
+- [x] Text tool advanced editing — click-to-position cursor, resize handle, Up/Down nav with x-hint, word nav, Ctrl+Home/End
+- [x] Window border contrast — multi-layer paintEvent outline so editor is distinct from any desktop
+- [x] Installer: force-kill running PapaRaZ.exe before install (taskkill fallback in Inno Setup)
+- [x] In-app update downloader (progress bar, auto-launch installer, fallback browser)
+- [ ] Layers panel (element z-ordering with drag)
 - [ ] Magnifier tool (zoom loupe callout — source rect + zoomed circle annotation)
+- [ ] Light theme option
 - [ ] Video/GIF recording
 - [ ] Upload to cloud (Imgur, custom endpoint)
 - [ ] Plugin/extension system
 - [ ] Localization (i18n)
 - [ ] Accessibility (screen reader support)
 - [ ] Project file format (.papraz) to save/load edits with full object state
-- [x] Installer: force-kill running PapaRaZ.exe before install (taskkill fallback in Inno Setup)
-- [x] In-app update downloader (progress bar, auto-launch installer, fallback browser)
+- [ ] Auto-save / crash recovery
 
 ---
 
@@ -146,5 +151,5 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Completed
 
 ## Current Status: Phase 6 complete, Phase 7 nearly complete (testing remaining)
-**Version**: 0.9.4
+**Version**: 0.9.5
 **Last updated**: 2026-03-31

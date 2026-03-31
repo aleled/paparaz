@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QWidget, QLabel, QLineEdit, QSpinBox, QDoubleSpinBox,
-    QCheckBox, QComboBox, QPushButton, QFileDialog,
+    QComboBox, QPushButton, QFileDialog,
     QColorDialog, QGroupBox, QScrollArea, QFrame,
     QListWidget, QListWidgetItem, QStackedWidget, QSizePolicy,
     QToolButton, QSlider,
@@ -83,14 +83,18 @@ QSlider::handle:horizontal {
 QSlider::handle:horizontal:hover { background: #aa33dd; }
 QSlider::sub-page:horizontal { background: #8800bb; border-radius: 2px; }
 
-/* ── Checkboxes ──────────────────────────────────────────────────────────── */
-QCheckBox { color: #bbb; spacing: 9px; }
-QCheckBox::indicator {
-    width: 18px; height: 18px; border: 1px solid #3a3a5a;
-    border-radius: 5px; background: #1a1a2e;
+/* ── Toggle settings (on/off boolean options) ────────────────────────────── */
+QPushButton#toggleSetting {
+    background: #13131f; border: 1px solid #2a2a45;
+    border-radius: 6px; color: #555; text-align: left;
+    padding: 8px 14px; font-size: 12px; min-height: 32px; font-weight: 400;
 }
-QCheckBox::indicator:checked { background: #8800bb; border-color: #8800bb; }
-QCheckBox::indicator:checked:hover { background: #aa33dd; }
+QPushButton#toggleSetting:hover { border-color: #555577; color: #999; }
+QPushButton#toggleSetting:checked {
+    background: #1d0b30; border-color: #8800bb; color: #e0b0ff;
+    border-left: 3px solid #8800bb;
+}
+QPushButton#toggleSetting:checked:hover { background: #250d3a; }
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 QPushButton {
@@ -393,7 +397,9 @@ class SettingsDialog(QDialog):
 
         # Behavior
         grp2, form2 = _grp("Capture Behavior")
-        self._tray_notify = QCheckBox("Show tray notification when ready")
+        self._tray_notify = QPushButton("Show tray notification when ready")
+        self._tray_notify.setObjectName("toggleSetting")
+        self._tray_notify.setCheckable(True)
         self._tray_notify.setChecked(self._s.show_tray_notification)
         form2.addRow("", self._tray_notify)
 
@@ -419,7 +425,9 @@ class SettingsDialog(QDialog):
         self._subfolder_edit.setPlaceholderText("e.g. {yyyy}\\{MM}  (leave blank for none)")
         form3.addRow("Subfolder:", self._subfolder_edit)
 
-        self._auto_save_check = QCheckBox("Auto-save silently (Ctrl+Shift+S skips dialog)")
+        self._auto_save_check = QPushButton("Auto-save silently (Ctrl+Shift+S skips dialog)")
+        self._auto_save_check.setObjectName("toggleSetting")
+        self._auto_save_check.setCheckable(True)
         self._auto_save_check.setChecked(getattr(self._s, "auto_save", False))
         form3.addRow("", self._auto_save_check)
 
@@ -771,7 +779,9 @@ class SettingsDialog(QDialog):
         vbox.addSpacing(8)
 
         grp, form = _grp("Update Checking")
-        self._auto_update = QCheckBox("Check for updates automatically on startup")
+        self._auto_update = QPushButton("Check for updates automatically on startup")
+        self._auto_update.setObjectName("toggleSetting")
+        self._auto_update.setCheckable(True)
         self._auto_update.setChecked(getattr(self._s, 'auto_check_updates', True))
         form.addRow("", self._auto_update)
 
@@ -783,7 +793,9 @@ class SettingsDialog(QDialog):
 
         grp2, form2 = _grp("System")
         from paparaz.utils.startup import get_start_on_login
-        self._start_login = QCheckBox("Launch PapaRaZ at Windows login")
+        self._start_login = QPushButton("Launch PapaRaZ at Windows login")
+        self._start_login.setObjectName("toggleSetting")
+        self._start_login.setCheckable(True)
         self._start_login.setChecked(get_start_on_login())
         form2.addRow("", self._start_login)
         vbox.addWidget(grp2)

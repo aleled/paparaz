@@ -40,6 +40,12 @@ class TextTool(BaseTool):
         self.stroke_enabled = False
         self.stroke_color   = "#000000"
         self.stroke_width   = 2.0
+        # Resize state
+        self._resizing = False
+        self._resize_start_x = 0.0
+        self._resize_start_w = 0.0
+        # Preserved x-offset for Up/Down navigation across wrapped lines
+        self._nav_x_hint: float | None = None
         # Assigned by the editor; called with True when editing starts, False when done.
         self.on_editing_changed = None
 
@@ -61,26 +67,88 @@ class TextTool(BaseTool):
         """Clear _active_text and fire on_editing_changed(False) if was editing."""
         was_editing = self._active_text is not None
         self._active_text = None
+        self._resizing = False
         if was_editing and self.on_editing_changed:
             self.on_editing_changed(False)
+
+    # ------------------------------------------------------------------
+    # Click-to-position helpers
+    # ------------------------------------------------------------------
+
+    def _x_to_char(self, line: str, x_offset: float, fm: QFontMetrics) -> int:
+        """Return char index in *line* whose left edge is closest to *x_offset*."""
+        best = len(line)
+        for i in range(len(line) + 1):
+            cx = fm.horizontalAdvance(line[:i])
+            if cx >= x_offset:
+                if i > 0:
+                    prev_cx = fm.horizontalAdvance(line[:i - 1])
+                    best = i - 1 if x_offset < (prev_cx + cx) / 2 else i
+                else:
+                    best = 0
+                break
+            best = i
+        return max(0, min(best, len(line)))
+
+    def _pos_to_cursor(self, pos: QPointF, elem: TextElement) -> int:
+        """Map a canvas click position to the nearest cursor index in elem.text."""
+        font = elem._make_font()
+        fm = QFontMetrics(font)
+        pad = elem.bg_padding if elem.bg_enabled else 4
+        max_w = max(1.0, elem.rect.width() - 2 * pad)
+        vlines = elem._build_visual_lines(fm, max_w)
+        if not vlines:
+            return 0
+        rel_y = pos.y() - elem.rect.top() - pad
+        line_idx = max(0, min(int(rel_y / fm.height()), len(vlines) - 1))
+        vl, vl_start, _ = vlines[line_idx]
+        lw = fm.horizontalAdvance(vl)
+        if elem.alignment == Qt.AlignmentFlag.AlignCenter:
+            line_x = elem.rect.left() + (elem.rect.width() - lw) / 2
+        elif elem.alignment == Qt.AlignmentFlag.AlignRight:
+            line_x = elem.rect.right() - lw - pad
+        else:
+            line_x = elem.rect.left() + pad
+        return vl_start + self._x_to_char(vl, pos.x() - line_x, fm)
+
+    def _is_resize_handle(self, pos: QPointF, elem: TextElement) -> bool:
+        hx = elem.rect.right() + 6
+        hy = elem.rect.center().y()
+        return abs(pos.x() - hx) <= 9 and abs(pos.y() - hy) <= 16
 
     # ------------------------------------------------------------------
 
     def on_press(self, pos: QPointF, event: QMouseEvent):
         if self._active_text:
-            # Commit whatever was typed
+            # Resize handle drag
+            if self._is_resize_handle(pos, self._active_text):
+                self._resizing = True
+                self._resize_start_x = pos.x()
+                self._resize_start_w = self._active_text.rect.width()
+                return
+            # Click inside active box → reposition cursor (no commit)
+            if self._active_text.contains_point(pos):
+                self._active_text.cursor_pos = self._pos_to_cursor(pos, self._active_text)
+                self._active_text.sel_start = -1
+                self._nav_x_hint = None
+                self.canvas.set_preview(self._active_text)
+                return
+            # Click outside → commit current text
             if self._active_text.text.strip():
                 self._active_text.editing = False
                 self.canvas.add_element(self._active_text)
             self._end_editing()
             self.canvas.set_preview(None)
 
-        # Click on existing TextElement → re-edit it
+        # Click on existing TextElement → re-edit it, cursor at click position
         for elem in reversed(self.canvas.elements):
             if isinstance(elem, TextElement) and elem.visible and elem.contains_point(pos):
                 self.canvas.elements.remove(elem)
                 elem.editing = True
                 self._begin_editing(elem)
+                elem.cursor_pos = self._pos_to_cursor(pos, elem)
+                elem.sel_start = -1
+                self._nav_x_hint = None
                 self.canvas.set_preview(elem)
                 self.canvas.setFocus()
                 return
@@ -93,6 +161,28 @@ class TextTool(BaseTool):
         self._begin_editing(elem)
         self.canvas.set_preview(elem)
         self.canvas.setFocus()
+
+    def on_move(self, pos: QPointF, event: QMouseEvent):
+        if self._resizing and self._active_text:
+            new_w = max(60.0, self._resize_start_w + (pos.x() - self._resize_start_x))
+            r = self._active_text.rect
+            self._active_text.rect = QRectF(r.left(), r.top(), new_w, r.height())
+            self._active_text.auto_size()
+            self.canvas.set_preview(self._active_text)
+
+    def on_release(self, pos: QPointF, event: QMouseEvent):
+        self._resizing = False
+
+    def on_hover(self, pos: QPointF):
+        self._hover_pos = pos
+        if self._active_text:
+            if self._is_resize_handle(pos, self._active_text):
+                self.canvas.setCursor(Qt.CursorShape.SizeHorCursor)
+            else:
+                self.canvas.setCursor(Qt.CursorShape.IBeamCursor)
+        else:
+            self.canvas.setCursor(Qt.CursorShape.IBeamCursor)
+        self.canvas.update()
 
     def on_key_press(self, event: QKeyEvent):
         if not self._active_text:
@@ -107,27 +197,78 @@ class TextTool(BaseTool):
         ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
 
         # --- Navigation & Selection ---
-        if key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Home, Qt.Key.Key_End):
-            if key == Qt.Key.Key_Left:
-                new_cp = max(0, cp - 1)
-            elif key == Qt.Key.Key_Right:
-                new_cp = min(len(text), cp + 1)
-            elif key == Qt.Key.Key_Home:
-                new_cp = 0
-            else:  # End
-                new_cp = len(text)
+        NAV_KEYS = (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Home, Qt.Key.Key_End,
+                    Qt.Key.Key_Up, Qt.Key.Key_Down)
+        if key in NAV_KEYS:
+            font = elem._make_font()
+            fm = QFontMetrics(font)
+            pad = elem.bg_padding if elem.bg_enabled else 4
+            max_w = max(1.0, elem.rect.width() - 2 * pad)
+            vlines = elem._build_visual_lines(fm, max_w)
+
+            # Ctrl+Left/Right — word navigation
+            if ctrl and key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+                new_cp = cp
+                if key == Qt.Key.Key_Left:
+                    while new_cp > 0 and text[new_cp - 1] in ' \t\n':
+                        new_cp -= 1
+                    while new_cp > 0 and text[new_cp - 1] not in ' \t\n':
+                        new_cp -= 1
+                else:
+                    while new_cp < len(text) and text[new_cp] not in ' \t\n':
+                        new_cp += 1
+                    while new_cp < len(text) and text[new_cp] in ' \t\n':
+                        new_cp += 1
+                self._nav_x_hint = None
+            # Up/Down — visual-line navigation
+            elif key in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+                li, cx = elem._cursor_to_vline(cp, vlines, fm)
+                # Preserve x-hint across consecutive Up/Down presses
+                if self._nav_x_hint is None:
+                    self._nav_x_hint = cx
+                x_hint = self._nav_x_hint
+                if key == Qt.Key.Key_Up:
+                    target_li = max(0, li - 1)
+                else:
+                    target_li = min(len(vlines) - 1, li + 1)
+                target_vl, target_start, _ = vlines[target_li]
+                char_in = self._x_to_char(target_vl, x_hint, fm)
+                new_cp = target_start + char_in
+            else:
+                self._nav_x_hint = None
+                if key == Qt.Key.Key_Left:
+                    new_cp = max(0, cp - 1)
+                elif key == Qt.Key.Key_Right:
+                    new_cp = min(len(text), cp + 1)
+                elif key == Qt.Key.Key_Home:
+                    # Go to start of current visual line (Ctrl+Home goes to absolute start)
+                    if ctrl:
+                        new_cp = 0
+                    else:
+                        li, _ = elem._cursor_to_vline(cp, vlines, fm)
+                        new_cp = vlines[li][1] if vlines else 0
+                else:  # End
+                    # Go to end of current visual line (Ctrl+End goes to absolute end)
+                    if ctrl:
+                        new_cp = len(text)
+                    else:
+                        li, _ = elem._cursor_to_vline(cp, vlines, fm)
+                        new_cp = vlines[li][2] if vlines else len(text)
+
+            if key not in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+                self._nav_x_hint = None
 
             if shift:
                 if elem.sel_start < 0:
-                    elem.sel_start = cp  # anchor where we were
+                    elem.sel_start = cp
                 elem.cursor_pos = new_cp
             else:
-                # Collapse selection: jump to appropriate end
-                if sel and not shift:
-                    lo, hi = sel
-                    elem.cursor_pos = lo if key == Qt.Key.Key_Left else hi
-                else:
-                    elem.cursor_pos = new_cp
+                # Left/Right collapse selection to appropriate edge; Up/Down uses computed pos
+                if sel and key == Qt.Key.Key_Left:
+                    new_cp = sel[0]
+                elif sel and key == Qt.Key.Key_Right:
+                    new_cp = sel[1]
+                elem.cursor_pos = new_cp
                 elem.sel_start = -1
 
             self.canvas.set_preview(elem)
@@ -215,6 +356,7 @@ class TextTool(BaseTool):
             return
 
         # --- Regular character ---
+        self._nav_x_hint = None
         char = event.text()
         if not (char and char.isprintable()):
             return
@@ -236,20 +378,26 @@ class TextTool(BaseTool):
             return
         style = self.canvas.current_style()
         font = QFont(style.font_family, style.font_size)
+        font.setBold(self.bold)
+        font.setItalic(self.italic)
         fm = QFontMetrics(font)
-        w = max(fm.horizontalAdvance("Type here...") + 16, 80)
-        h = fm.height() + 8
-        rect = QRectF(self._hover_pos.x(), self._hover_pos.y() - h, w, h)
+        sample = "Aa"
+        w = max(fm.horizontalAdvance(sample) + 32, 80)
+        h = fm.height() + 10
+        rect = QRectF(self._hover_pos.x(), self._hover_pos.y() - h / 2, w, h)
 
-        # Ghost text area
-        painter.setPen(QPen(QColor(116, 0, 150, 120), 1, Qt.PenStyle.DashLine))
-        painter.setBrush(QColor(116, 0, 150, 15))
+        # Ghost text area with dashed border
+        painter.setPen(QPen(QColor(116, 0, 150, 140), 1, Qt.PenStyle.DashLine))
+        painter.setBrush(QColor(116, 0, 150, 12))
         painter.drawRoundedRect(rect, 4, 4)
 
-        # Ghost text
+        # Sample text in current font/color
         painter.setFont(font)
-        painter.setPen(QColor(150, 150, 150, 100))
-        painter.drawText(QPointF(self._hover_pos.x() + 4, self._hover_pos.y() - 4), "T")
+        painter.setPen(QColor(style.foreground_color).lighter(140))
+        painter.drawText(
+            QPointF(rect.left() + 6, rect.top() + fm.ascent() + (h - fm.height()) / 2),
+            sample
+        )
 
     def start_editing(self, element: TextElement):
         """Begin re-editing an existing text element (called from double-click)."""

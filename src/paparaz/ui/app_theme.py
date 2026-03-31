@@ -115,49 +115,60 @@ QWidget#panelHeader {{ background: {bg1}; border-bottom: 1px solid {border}; }}
 QLabel {{ color: {fg_dim}; font-size: 11px; padding: 0; margin: 0; }}
 QLabel#sectionTitle {{
     color: {fg_dim}; font-size: 10px; font-weight: bold;
-    padding: 3px 0 1px 0; text-transform: uppercase;
+    padding: 5px 0 3px 0; text-transform: uppercase;
+    border-bottom: 1px solid {border};
 }}
 QLabel#editBanner {{
     color: {fg_bright}; background: {accent}; font-size: 11px; font-weight: bold;
     padding: 2px 4px; border-radius: 2px;
 }}
-QLabel#valLabel {{ color: {fg_dim}; font-size: 11px; min-width: 28px; }}
-QSlider {{ max-height: 18px; }}
-QSlider::groove:horizontal {{ height: 3px; background: {border}; border-radius: 1px; }}
+QLabel#valLabel {{ color: {fg_dim}; font-size: 11px; min-width: 32px; text-align: right; }}
+QSlider {{ min-height: 20px; max-height: 22px; }}
+QSlider::groove:horizontal {{ height: 4px; background: {border}; border-radius: 2px; }}
 QSlider::handle:horizontal {{
-    background: {accent}; width: 12px; height: 12px;
-    margin: -5px 0; border-radius: 6px;
+    background: {accent}; width: 14px; height: 14px;
+    margin: -5px 0; border-radius: 7px;
 }}
 QSlider::handle:horizontal:hover {{ background: {accent_hover}; }}
+QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 2px; }}
+QSlider:disabled {{ opacity: 0.35; }}
 QComboBox, QFontComboBox {{
     background: {bg2}; color: {fg};
-    border: 1px solid {border2}; border-radius: 2px;
-    padding: 2px 4px; font-size: 11px; max-height: 22px;
+    border: 1px solid {border2}; border-radius: 3px;
+    padding: 3px 6px; font-size: 11px; min-height: 24px;
 }}
 QComboBox QAbstractItemView {{
     background: {bg2}; color: {fg};
     selection-background-color: {accent}; font-size: 11px;
 }}
 QPushButton#colorSwatch {{
-    border: 1px solid {border}; border-radius: 2px;
-    min-width: 22px; min-height: 22px;
-    max-width: 22px; max-height: 22px;
+    border: 1px solid {border}; border-radius: 3px;
+    min-width: 24px; min-height: 24px;
+    max-width: 24px; max-height: 24px;
 }}
 QPushButton#colorSwatch:hover {{ border-color: {fg}; }}
-QCheckBox {{ color: {fg}; font-size: 11px; spacing: 4px; }}
-QCheckBox::indicator {{
-    width: 14px; height: 14px;
-    border: 1px solid {border}; border-radius: 2px; background: {bg2};
-}}
-QCheckBox::indicator:checked {{ background: {accent}; border-color: {accent}; }}
+QPushButton#colorSwatch:disabled {{ opacity: 0.30; }}
 QToolButton {{
     background: {bg2}; border: 1px solid {border2};
-    border-radius: 2px; padding: 1px;
-    min-width: 22px; min-height: 22px;
-    max-width: 22px; max-height: 22px;
+    border-radius: 3px; padding: 1px;
+    min-width: 24px; min-height: 24px;
+    max-width: 24px; max-height: 24px;
 }}
 QToolButton:hover    {{ background: {bg3}; }}
 QToolButton:checked  {{ background: {accent}; border-color: {accent}; }}
+QToolButton:disabled {{ opacity: 0.30; }}
+QToolButton#toggleBtn {{
+    min-width: 46px; max-width: 92px; min-height: 22px; max-height: 22px;
+    font-size: 10px; padding: 0 6px; border-radius: 3px;
+    color: {fg_dim}; text-align: center;
+}}
+QToolButton#toggleBtn:hover  {{ color: {fg}; }}
+QToolButton#toggleBtn:checked {{ color: {fg_bright}; }}
+QToolButton#unlinkBtn {{
+    min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px;
+    font-size: 10px; padding: 0; border-radius: 3px; color: {fg_dim};
+}}
+QToolButton#unlinkBtn:checked {{ background: {accent}; color: {fg_bright}; border-color: {accent}; }}
 """
 
 _EDITOR_QSS_TEMPLATE = """
@@ -188,12 +199,6 @@ QLineEdit, QSpinBox, QComboBox, QDoubleSpinBox {{
     border-radius: 4px; padding: 5px 8px; min-height: 24px; font-size: 12px;
 }}
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QDoubleSpinBox:focus {{ border-color: {accent}; }}
-QCheckBox {{ color: {fg}; spacing: 8px; font-size: 12px; }}
-QCheckBox::indicator {{
-    width: 16px; height: 16px; border: 1px solid {border};
-    border-radius: 3px; background: {bg2};
-}}
-QCheckBox::indicator:checked {{ background: {accent}; border-color: {accent}; }}
 QPushButton {{
     background: {accent}; color: white; border: none;
     border-radius: 5px; padding: 8px 22px; font-weight: bold; font-size: 12px;

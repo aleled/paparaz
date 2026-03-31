@@ -61,18 +61,26 @@
 - **Tool buttons**: Select, Pen, Brush, Line, Arrow, Rect, Ellipse, Text, Number, Eraser, Blur, Fill
 - **Action buttons** (after separator): Undo, Redo, Save, Copy, Paste, Close
 
-## Side Panel (250px, left)
-- Scrollable with dark background
+## Side Panel (260px, floating)
+- Free-floating top-level window; draggable via header grip
+- **Three modes**: auto (shows on element select, hides 3 s after deselect), pinned (always visible), hidden (grip tab on canvas edge to restore)
+- **Header bar** (40 px):
+  - `⠿` drag grip with `SizeAllCursor`
+  - **Title**: "Properties" at rest; updates to element type name when element selected ("Text", "Rectangle", "Arrow", etc.)
+  - **📌 Pin** toggle (40 × 28 px): checked = pinned, unchecked = auto-hide
+  - **✕ Close** (28 × 28 px): hides panel, sets hidden mode
+- **Element preview strip** (80 px): scaled `paint()` render of the selected element; "No selection" placeholder when empty
 - **Edit mode banner**: Purple "Editing selected element" when element selected
-- **COLOR section**: Foreground + Background swatches (always visible)
+- **COLOR section**: Foreground + Background swatches; labeled **RECENT COLORS** palette below with left/right-click tooltip
 - **Per-tool sections** (auto-show/hide):
-  - STROKE: Width slider (1-50) + spinbox
-  - LINE STYLE: Dash pattern, Cap style, Join style dropdowns
-  - FILL: Filled shape checkbox
-  - TEXT: Font family, size, bold/italic/underline/strikethrough, alignment (L/C/R), direction (LTR/RTL), text background toggle + color
+  - STROKE: Width slider (0–50 px); 0 px = borderless fill
+  - LINE STYLE: Dash pattern; Cap (stacked row); Join (stacked row)
+  - FILL: "Filled shape" toggle button (labeled)
+  - TEXT: Font family, size (6–120 pt), **B/I/U/S̶** labeled toggle buttons, `≡←/≡/≡→` alignment, LTR/RTL direction, Bg + Outline toggles with dependent swatches
   - MARKER: Circle size, font family, text color
-  - PIXELATE: Pixel size slider (2-50)
-  - EFFECTS: Opacity slider, Shadow toggle + color + offset X/Y + blur
+  - PIXELATE: Pixel size slider (2–50)
+  - EFFECTS: Opacity slider, Shadow toggle + color + offset X/Y + linked Blur slider (≠ unlink for independent Blur X/Y)
+- All toggle controls are `QToolButton` (checkable, labeled) — no checkboxes
 
 ## Selection Visuals
 - **Selected element**: Thin 1px accent-color border only — **no fill overlay** (fully transparent)
@@ -86,20 +94,24 @@
 ## Tool Hover Previews
 | Tool | Preview |
 |------|---------|
-| Text | Ghost dashed text box at cursor + "T" label |
+| Text | Ghost dashed text box at cursor + "Aa" label in current font/color/style |
 | Numbering | Ghost circle at cursor showing next number |
 | Eraser | Accent-color circle + X icon on target element (theme-aware) |
 | Fill | Color-tinted highlight on target shape |
 | Masquerade | Crosshair at cursor |
 | Select | Dotted outline on hovered element |
+| Eyedropper | 80 px magnifying loupe (10× zoom), hex label beneath |
 
 ## Text Editing
 - **Before click**: Ghost text box at cursor position
 - **After click**: Purple dashed border around text area + light tint
 - **Placeholder**: "Type here..." in gray when empty
-- **Cursor**: 2px foreground-color line at end of text
+- **Cursor**: 2px foreground-color line; click inside text to reposition cursor to exact character
 - **Multi-line**: Enter for newline, Ctrl+Enter to finalize
 - **Double-click**: Re-enter editing mode on existing text element
+- **Resize handle**: Purple 3-line grip on right edge; drag horizontally to change box width
+- **Navigation**: Up/Down arrows move across visual lines (x-hint preserved); Ctrl+Left/Right jumps word boundaries; Home/End go to visual line start/end; Ctrl+Home/End jump to document start/end
+- **Font size**: 6–120 pt
 
 ## Status Bar
 - Current tool name

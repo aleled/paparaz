@@ -252,12 +252,24 @@ class EditorWindow(QWidget):
         copy_to_clipboard(screenshot)
 
     def paintEvent(self, event):
-        """Draw semi-transparent dark background behind canvas."""
+        """Draw window chrome: outer shadow ring + dark background + accent border."""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setBrush(QColor(10, 10, 20, 220))
-        p.setPen(QColor(116, 0, 150, 150))
-        p.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 8, 8)
+        # Outer dark shadow ring — visible against any desktop background
+        r = self.rect()
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QColor(0, 0, 0, 100))
+        p.drawRoundedRect(r.adjusted(0, 0, -1, -1), 10, 10)
+        p.setPen(QColor(0, 0, 0, 50))
+        p.drawRoundedRect(r.adjusted(1, 1, -2, -2), 10, 10)
+        # Main background fill
+        p.setBrush(QColor(10, 10, 20, 230))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(r.adjusted(2, 2, -2, -2), 8, 8)
+        # Accent border (2 px, fully opaque so it reads against the image)
+        p.setPen(QColor(116, 0, 150, 240))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(r.adjusted(2, 2, -2, -2), 8, 8)
         p.end()
 
     # --- Border resize cursor + drag: event filter installed on every child widget ---
@@ -373,6 +385,8 @@ class EditorWindow(QWidget):
 
     # --- Tool selection ---
 
+    _PANEL_PROP_KEYS = {'color', 'stroke', 'effects', 'text', 'mask', 'number', 'stamp', 'fill', 'fill_tol'}
+
     def _on_tool_selected(self, tool_type: ToolType):
         # Save departing tool's props before switching
         if hasattr(self, '_current_tool_type') and not self._canvas.selected_element:
@@ -385,6 +399,11 @@ class EditorWindow(QWidget):
             if not self._canvas.selected_element:
                 self._side_panel.update_for_tool(tool_type)
                 self._load_tool_properties(tool_type)
+            # Show panel whenever the new tool has configurable properties
+            from paparaz.ui.side_panel import TOOL_SECTIONS
+            s = TOOL_SECTIONS.get(tool_type, {})
+            if any(s.get(k) for k in self._PANEL_PROP_KEYS) and self._side_panel._mode != "hidden":
+                self._side_panel.show()
 
     # --- Element selection -> side panel ---
 
@@ -486,11 +505,18 @@ class EditorWindow(QWidget):
                 self.width() - self._close_btn_overlay.width() - m, m
             )
             self._close_btn_overlay.raise_()
-        # Place the floating side panel near the canvas on first show (screen coords)
+        # Place the floating side panel to the right of the editor (or left if no room)
         if not self._panel_initially_placed:
             self._panel_initially_placed = True
-            canvas_global = self._canvas.mapToGlobal(QPoint(0, 0))
-            self._side_panel.move(canvas_global.x() + 4, canvas_global.y() + 4)
+            editor_global = self.mapToGlobal(QPoint(0, 0))
+            panel_w = self._side_panel.sizeHint().width() or 220
+            gap = 10
+            screen_rect = QApplication.primaryScreen().availableGeometry()
+            panel_x = editor_global.x() + self.width() + gap
+            if panel_x + panel_w > screen_rect.right():
+                panel_x = max(screen_rect.left(), editor_global.x() - panel_w - gap)
+            panel_y = max(screen_rect.top(), min(editor_global.y(), screen_rect.bottom() - 300))
+            self._side_panel.move(panel_x, panel_y)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

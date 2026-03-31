@@ -57,8 +57,10 @@ src/paparaz/
         capture.py           # Win32 BitBlt multi-monitor capture (DPI-aware)
         elements.py          # 11 element types: Pen, Brush, Line, Arrow, CurvedArrow,
                              #   Rect, Ellipse, Text, Number, Mask, Image
-                             # ElementStyle: colors, width, opacity, shadow,
+                             # ElementStyle: colors, width, opacity, shadow (blur_x/blur_y),
                              #   font, cap/join/dash
+                             # TextElement extras: stroke_enabled/color/width, bg_enabled/color,
+                             #   resize handle drawn on right edge when editing
                              # set_selection_accent(hex): updates SEL_COLOR class var
                              #   so all selection visuals use the active theme accent
         history.py           # Undo/Redo via Command pattern (200-step stack)
@@ -75,7 +77,10 @@ src/paparaz/
                              # Style template + selected element live editing
         toolbar.py           # circular purple buttons (40px, drop shadow)
         side_panel.py        # Per-tool settings sections + element property inspector
-                             # Shadow controls, text controls, number controls
+                             # Header: 40px, pin toggle, close button, drag grip, title label
+                             # Element preview strip: scaled paint() render of selected element
+                             # Shadow: linked Blur slider + ≠ unlink for independent X/Y
+                             # Format buttons: labeled B/I/U/S̶ + alignment symbols
         icons.py             # SVG icons for all tools (white on transparent)
         stamps.py            # 32 predefined SVG stamps (16 solid + 10 transparent-bg
                              #   variants + 6 utility text stamps: WIP/DRAFT/TODO/DONE/FIX/NEW)

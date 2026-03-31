@@ -4,7 +4,7 @@
 
 <br/>
 
-[![Version](https://img.shields.io/badge/version-0.9.2-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.9.5-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/aleled/paparaz/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![PySide6](https://img.shields.io/badge/PySide6-Qt6-41CD52?style=flat-square&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
@@ -36,12 +36,12 @@ Every annotation is a **discrete, selectable object** — not a flat paint layer
 | 📸 | **Instant Capture** | PrintScreen global hotkey — capture appears in under 100ms |
 | 🖥️ | **Multi-monitor** | Win32 DPI-aware capture across all screens |
 | 🎨 | **15 Annotation Tools** | Pen, Brush, Arrow, Line, Rect, Ellipse, Text, Number, Stamp, Eraser, Blur, Fill, Crop, Slice, Select |
-| 🔖 | **16 Stamps** | Approved, Rejected, Priority, Bug, Question, Stars, TODO, WIP, and more |
+| 🔖 | **32 Stamps** | Approved, Rejected, Priority, Bug, WIP, DRAFT, TODO, DONE, FIX, NEW and more (inc. transparent-bg variants) |
 | 🔤 | **Windows OCR** | Select strokes → right-click → convert to editable text |
 | ✂️ | **Crop & Slice** | Non-destructive crop or export sub-regions |
 | 🌫️ | **Blur / Redact** | Pixelate sensitive regions |
 | 🎯 | **Multi-select** | Rubber-band or Shift+click — group move, group delete, group OCR |
-| 🎛️ | **Floating Side Panel** | Drag freely, auto-hides on deselect, pin for always-on |
+| 🎛️ | **Floating Properties Panel** | Element preview, drag freely, pin open or auto-hide on deselect |
 | 🎨 | **5 UI Themes** | Dark, Midnight, Ocean, Forest, Warm |
 | 💾 | **4 Export Formats** | PNG, JPG, SVG (vector), Clipboard |
 | 🔄 | **200-step Undo/Redo** | Full history — Ctrl+Z / Ctrl+Y |
@@ -54,7 +54,7 @@ Every annotation is a **discrete, selectable object** — not a flat paint layer
 
 ### Option 1 — Installer (Recommended)
 
-1. Download **[PapaRaZ_Setup_0.9.2.exe](https://github.com/aleled/paparaz/releases/latest)**
+1. Download **[PapaRaZ_Setup_0.9.5.exe](https://github.com/aleled/paparaz/releases/latest)**
 2. Run the installer
 3. Press **PrintScreen** — start capturing
 
@@ -90,6 +90,8 @@ python -m paparaz
 | `X` | Eraser |
 | `M` | Blur / Masquerade |
 | `C` | Crop |
+| `Q` | Curved Arrow |
+| `I` | Eyedropper |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` | Redo |
 | `Ctrl+C` | Copy to clipboard |
@@ -114,7 +116,9 @@ python -m paparaz
 <tr><td>⭕ Ellipse</td><td><code>E</code></td><td>Color · Fill · Width · Dash · Shadow</td></tr>
 <tr><td>🔤 Text</td><td><code>T</code></td><td>Font · Size · Bold · Italic · Underline · Align · RTL · Background</td></tr>
 <tr><td>🔢 Numbering</td><td><code>N</code></td><td>Auto-increment circles · Size · Colors</td></tr>
-<tr><td>🔖 Stamp</td><td><code>S</code></td><td>16 pre-built stamps · Resizable · Rotatable</td></tr>
+<tr><td>🔖 Stamp</td><td><code>S</code></td><td>32 pre-built stamps (solid + transparent-bg + utility text) · Resizable · Rotatable</td></tr>
+<tr><td>↩️ Curved Arrow</td><td><code>Q</code></td><td>Quadratic Bezier with tangent arrowhead · 3-click workflow</td></tr>
+<tr><td>🔬 Eyedropper</td><td><code>I</code></td><td>Sample any pixel · Live 10× loupe · Sets fg or bg color</td></tr>
 <tr><td>❌ Eraser</td><td><code>X</code></td><td>Click element to remove</td></tr>
 <tr><td>🌫️ Blur</td><td><code>M</code></td><td>Pixelate regions · Adjustable block size</td></tr>
 <tr><td>🪣 Fill</td><td><code>F</code></td><td>Flood-fill with background color · Tolerance</td></tr>

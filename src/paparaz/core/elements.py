@@ -947,6 +947,15 @@ class TextElement(AnnotationElement):
             painter.setPen(QPen(QColor(116, 0, 150, 180), 1.5, Qt.PenStyle.DashLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(-2, -2, 2, 2), 4, 4)
+            # Width-resize handle on the right edge
+            hx = rect.right() + 6
+            hy = rect.center().y()
+            painter.setPen(QPen(QColor(116, 0, 150, 240), 1))
+            painter.setBrush(QColor(30, 15, 50, 220))
+            painter.drawRoundedRect(QRectF(hx - 5, hy - 13, 10, 26), 3, 3)
+            painter.setPen(QPen(QColor(200, 160, 230, 230), 1))
+            for _dy in (-6, 0, 6):
+                painter.drawLine(QPointF(hx - 2, hy + _dy), QPointF(hx + 2, hy + _dy))
 
         if not self.text:
             if self.editing:

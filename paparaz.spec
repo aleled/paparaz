@@ -6,7 +6,12 @@ block_cipher = None
 a = Analysis(
     ['src/paparaz/__main__.py'],
     pathex=['src'],
-    binaries=[],
+    binaries=[
+        # python313.dll lives inside the protected WindowsApps directory on
+        # Microsoft Store Python installs and PyInstaller can't find it
+        # automatically — bundle it explicitly.
+        ('python313.dll', '.'),
+    ],
     datas=[
         ('assets/paparaz.ico', 'assets'),
     ],

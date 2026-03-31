@@ -141,6 +141,141 @@ STAMPS = {
             <line x1="18" y1="36" x2="38" y2="36" stroke="#999" stroke-width="1.5"/>
         </svg>""",
     },
+
+    # ── Transparent-background variants ──────────────────────────────────────
+    "check_t": {
+        "label": "\u2713 Check (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <path d="M12 33 L26 47 L52 18" stroke="#4CAF50" stroke-width="7"
+                  fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>""",
+    },
+    "cross_t": {
+        "label": "\u2717 Cross (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <path d="M16 16 L48 48 M48 16 L16 48" stroke="#F44336" stroke-width="7"
+                  fill="none" stroke-linecap="round"/>
+        </svg>""",
+    },
+    "ok_t": {
+        "label": "OK (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <text x="32" y="46" text-anchor="middle" fill="#2196F3"
+                  font-size="36" font-weight="bold" font-family="Arial">OK</text>
+        </svg>""",
+    },
+    "bad_t": {
+        "label": "BAD (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <text x="32" y="44" text-anchor="middle" fill="#F44336"
+                  font-size="30" font-weight="bold" font-family="Arial">BAD</text>
+        </svg>""",
+    },
+    "info_t": {
+        "label": "\u24D8 Info (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="27" fill="none" stroke="#2196F3" stroke-width="3.5"/>
+            <text x="32" y="24" text-anchor="middle" fill="#2196F3"
+                  font-size="18" font-weight="bold" font-family="serif">i</text>
+            <rect x="28" y="28" width="8" height="20" rx="2" fill="#2196F3"/>
+        </svg>""",
+    },
+    "question_t": {
+        "label": "? Question (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <circle cx="32" cy="32" r="27" fill="none" stroke="#9C27B0" stroke-width="3.5"/>
+            <text x="32" y="45" text-anchor="middle" fill="#9C27B0"
+                  font-size="34" font-weight="bold" font-family="Arial">?</text>
+        </svg>""",
+    },
+    "thumbsup_t": {
+        "label": "\U0001F44D Thumbs Up (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <path d="M22 38 L22 28 L28 28 L32 18 L38 18 L38 28 L44 28 L44 44 L26 44 L22 38Z"
+                  fill="#4CAF50" stroke="#388E3C" stroke-width="1.5"
+                  stroke-linejoin="round"/>
+        </svg>""",
+    },
+    "thumbsdown_t": {
+        "label": "\U0001F44E Thumbs Down (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <path d="M22 26 L22 36 L28 36 L32 46 L38 46 L38 36 L44 36 L44 20 L26 20 L22 26Z"
+                  fill="#F44336" stroke="#C62828" stroke-width="1.5"
+                  stroke-linejoin="round"/>
+        </svg>""",
+    },
+    "priority_t": {
+        "label": "\u26A1 Priority (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <text x="32" y="29" text-anchor="middle" fill="#FF5722"
+                  font-size="15" font-weight="bold" font-family="Arial">HIGH</text>
+            <text x="32" y="47" text-anchor="middle" fill="#FF5722"
+                  font-size="14" font-weight="bold" font-family="Arial">PRIORITY</text>
+        </svg>""",
+    },
+    "bug_t": {
+        "label": "\U0001F41B Bug (clear)",
+        "svg": """<svg viewBox="0 0 64 64">
+            <text x="32" y="44" text-anchor="middle" fill="#F44336"
+                  font-size="32" font-weight="bold" font-family="Arial">BUG</text>
+        </svg>""",
+    },
+
+    # ── Extra text stamps ─────────────────────────────────────────────────────
+    "wip": {
+        "label": "WIP",
+        "svg": """<svg viewBox="0 0 64 64">
+            <rect x="2" y="16" width="60" height="32" rx="6"
+                  fill="none" stroke="#FF9800" stroke-width="3" stroke-dasharray="6 3"/>
+            <text x="32" y="37" text-anchor="middle" fill="#FF9800"
+                  font-size="14" font-weight="bold" font-family="Arial">WIP</text>
+        </svg>""",
+    },
+    "draft": {
+        "label": "DRAFT",
+        "svg": """<svg viewBox="0 0 64 64">
+            <rect x="2" y="16" width="60" height="32" rx="6"
+                  fill="none" stroke="#9E9E9E" stroke-width="3" stroke-dasharray="6 3"/>
+            <text x="32" y="37" text-anchor="middle" fill="#9E9E9E"
+                  font-size="13" font-weight="bold" font-family="Arial">DRAFT</text>
+        </svg>""",
+    },
+    "todo": {
+        "label": "TODO",
+        "svg": """<svg viewBox="0 0 64 64">
+            <rect x="2" y="16" width="60" height="32" rx="6"
+                  fill="none" stroke="#03A9F4" stroke-width="3"/>
+            <text x="32" y="37" text-anchor="middle" fill="#03A9F4"
+                  font-size="14" font-weight="bold" font-family="Arial">TODO</text>
+        </svg>""",
+    },
+    "done": {
+        "label": "DONE",
+        "svg": """<svg viewBox="0 0 64 64">
+            <rect x="2" y="16" width="60" height="32" rx="6"
+                  fill="none" stroke="#4CAF50" stroke-width="3"/>
+            <text x="32" y="37" text-anchor="middle" fill="#4CAF50"
+                  font-size="14" font-weight="bold" font-family="Arial">DONE</text>
+        </svg>""",
+    },
+    "fix": {
+        "label": "FIX",
+        "svg": """<svg viewBox="0 0 64 64">
+            <rect x="2" y="16" width="60" height="32" rx="6"
+                  fill="none" stroke="#FF5722" stroke-width="3"/>
+            <text x="32" y="37" text-anchor="middle" fill="#FF5722"
+                  font-size="16" font-weight="bold" font-family="Arial">FIX</text>
+        </svg>""",
+    },
+    "new": {
+        "label": "\u2605 NEW",
+        "svg": """<svg viewBox="0 0 64 64">
+            <polygon points="32,4 37,22 56,22 41,33 46,51 32,41 18,51 23,33 8,22 27,22"
+                     fill="#FF5722" stroke="#BF360C" stroke-width="1.5"/>
+            <text x="32" y="36" text-anchor="middle" fill="white"
+                  font-size="11" font-weight="bold" font-family="Arial">NEW</text>
+        </svg>""",
+    },
 }
 
 _renderers: dict[str, QSvgRenderer] = {}

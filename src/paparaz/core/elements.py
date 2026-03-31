@@ -32,6 +32,12 @@ from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QFont, QPainterPath,
     QPolygonF, QTransform, QFontMetrics, QPixmap, QImage,
 )
+def set_selection_accent(hex_color: str):
+    """Update selection border/handle color to match the current app theme accent."""
+    c = QColor(hex_color)
+    AnnotationElement.SEL_COLOR = c
+
+
 def _scale_blur(pix: "QPixmap", rx: float, ry: float) -> "QPixmap":
     """Approximate directional Gaussian blur via three-pass downscale/upscale.
     rx controls horizontal spread, ry controls vertical spread."""
@@ -139,13 +145,12 @@ class AnnotationElement:
     def paint(self, painter: QPainter):
         raise NotImplementedError
 
-    # --- Selection colors (Flameshot purple style) ---
-    SEL_COLOR       = QColor(116, 0, 150)       # #740096
-    SEL_COLOR_LIGHT = QColor(116, 0, 150, 60)
-    SEL_ROT_COLOR   = QColor(0, 188, 140)       # teal for rotation handle
-    SEL_HANDLE_SIZE = 12
-    SEL_BORDER_WIDTH = 2
-    ROT_HANDLE_OFFSET = 30   # px above top-center
+    # --- Selection colors (updated by set_selection_accent()) ---
+    SEL_COLOR        = QColor(116, 0, 150)   # accent — updated dynamically
+    SEL_ROT_COLOR    = QColor(0, 188, 140)   # teal for rotation handle
+    SEL_HANDLE_SIZE  = 7                     # compact square handle side length
+    SEL_BORDER_WIDTH = 1
+    ROT_HANDLE_OFFSET = 22                   # px above top-center
 
     def paint_selection(self, painter: QPainter):
         if not self.selected:
@@ -156,41 +161,33 @@ class AnnotationElement:
         if self.rotation:
             _apply_rotation(painter, center, self.rotation)
 
-        rect    = self.bounding_rect()
-        p       = self.SEL_PADDING
+        rect     = self.bounding_rect()
+        p        = self.SEL_PADDING
         sel_rect = rect.adjusted(-p, -p, p, p)
 
-        # Tinted overlay
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(self.SEL_COLOR_LIGHT)
-        painter.drawRect(sel_rect)
-
-        # Purple border
+        # Thin accent border only — no tinted fill overlay
         painter.setPen(QPen(self.SEL_COLOR, self.SEL_BORDER_WIDTH))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(sel_rect)
 
-        # White inner border
-        painter.setPen(QPen(QColor(255, 255, 255, 100), 1))
-        painter.drawRect(rect.adjusted(-3, -3, 3, 3))
-
-        # Resize handles (indices 0-7)
+        # Resize handles (indices 0-7) — small white squares with accent border
         hs = self.SEL_HANDLE_SIZE / 2
         for hx, hy in self._handle_positions()[:8]:
-            painter.setPen(QPen(QColor("white"), 2))
-            painter.setBrush(self.SEL_COLOR)
-            painter.drawEllipse(QPointF(hx, hy), hs, hs)
+            painter.setPen(QPen(self.SEL_COLOR, 1))
+            painter.setBrush(QColor(255, 255, 255, 230))
+            painter.drawRect(QRectF(hx - hs, hy - hs, self.SEL_HANDLE_SIZE, self.SEL_HANDLE_SIZE))
 
-        # Rotation handle (index 8): teal circle above top-center, connected by line
+        # Rotation handle: small teal circle above top-center, thin connector line
         rcx = sel_rect.center().x()
         rty = sel_rect.top()
         rhy = rty - self.ROT_HANDLE_OFFSET
-        painter.setPen(QPen(self.SEL_COLOR, 1.5))
+        painter.setPen(QPen(self.SEL_COLOR, 1, Qt.PenStyle.DotLine))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawLine(QPointF(rcx, rty), QPointF(rcx, rhy))
-        painter.setPen(QPen(QColor("white"), 2))
-        painter.setBrush(self.SEL_ROT_COLOR)
-        painter.drawEllipse(QPointF(rcx, rhy), hs, hs)
+        painter.setPen(QPen(self.SEL_ROT_COLOR, 1))
+        painter.setBrush(QColor(255, 255, 255, 220))
+        rot_r = hs
+        painter.drawEllipse(QPointF(rcx, rhy), rot_r, rot_r)
 
         painter.restore()
 

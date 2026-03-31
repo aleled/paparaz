@@ -3,10 +3,10 @@
 ## Design Philosophy
 - **Minimal**: Tools appear when needed, disappear when not
 - **Fast**: Sub-second capture to edit, no loading screens
-- **Familiar**: Flameshot users feel at home
+- **Familiar**: Users feel at home
 - **Discoverable**: Hover previews show what tools will do before clicking
 
-## Color Scheme (Flameshot-inspired)
+## Color Scheme (Default Dark Theme)
 
 | Element | Color | Hex |
 |---------|-------|-----|
@@ -15,10 +15,12 @@
 | Window background | Near black | `#0d0d1a` |
 | Panel background | Dark blue-gray | `#1a1a2e` |
 | Overlay (region selector) | Black 75% | `rgba(0,0,0,190)` |
-| Selection handles | Purple circles | `#740096` |
-| Selection border | Purple 2px | `#740096` |
+| Selection handles | Small white squares, accent border | theme accent |
+| Selection border | 1px, no fill | theme accent |
 | Edit mode banner | Purple pill | `#740096` |
 | Dimension badge | Dark pill | `rgba(0,0,0,200)` |
+
+**5 built-in themes**: Dark (default), Midnight Blue, Ocean, Forest, Warm Dark — all selection and tool visuals adapt to the chosen accent color.
 
 ## System Tray
 - Icon: Red rounded square with "Pz" text
@@ -50,7 +52,7 @@
 +-------------------------------------------------------+
 ```
 
-## Toolbar (Flameshot-style)
+## Toolbar
 - Horizontal row of circular buttons (40px diameter)
 - White Material Design SVG icons (24px, 60% of button)
 - Purple background (`#740096`), checked state dark purple (`#270032`)
@@ -73,17 +75,20 @@
   - EFFECTS: Opacity slider, Shadow toggle + color + offset X/Y + blur
 
 ## Selection Visuals
-- **Selected element**: Purple tinted overlay + 2px purple border + white inner border
-- **8 circular handles**: 12px diameter, purple fill, white 2px outline
+- **Selected element**: Thin 1px accent-color border only — **no fill overlay** (fully transparent)
+- **8 square handles**: 7px, white fill, 1px accent-color border
+- **Rotation handle**: Small circle above element, connected by dotted line
 - **Dimension badge**: Black rounded pill showing `W×H (X,Y)` below element
-- **Hover (Select tool)**: Dotted purple outline on non-selected hovered elements
+- **Hover (Select tool)**: Dotted accent-color outline on non-selected hovered elements
+- **Theme-aware**: All selection visuals use the current app theme accent color, updated live on theme change
+- **Precision movement**: Arrow keys move selected element(s) 1 px; Shift+arrow moves 10 px (undoable)
 
 ## Tool Hover Previews
 | Tool | Preview |
 |------|---------|
 | Text | Ghost dashed text box at cursor + "T" label |
 | Numbering | Ghost circle at cursor showing next number |
-| Eraser | Red highlight + X icon on target element |
+| Eraser | Accent-color circle + X icon on target element (theme-aware) |
 | Fill | Color-tinted highlight on target shape |
 | Masquerade | Crosshair at cursor |
 | Select | Dotted outline on hovered element |

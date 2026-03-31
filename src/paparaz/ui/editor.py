@@ -28,6 +28,7 @@ from paparaz.core.export import save_png, save_jpg, save_svg, copy_to_clipboard
 from paparaz.core.elements import (
     NumberElement, AnnotationElement, TextElement,
     RectElement, EllipseElement, MaskElement, NumberElement as NumElem, StampElement,
+    set_selection_accent,
 )
 from paparaz.ui.canvas_resize_dialog import CanvasResizeDialog
 
@@ -529,6 +530,10 @@ class EditorWindow(QWidget):
         # Apply to side panel (also stores theme for paintEvent)
         if hasattr(self, '_side_panel'):
             self._side_panel.apply_theme(theme)
+        # Update selection handle + border accent color to match theme
+        set_selection_accent(theme.get("accent", "#740096"))
+        if hasattr(self, '_canvas'):
+            self._canvas.update()
         # Apply background color to editor root
         bg = theme["bg1"]
         self.setStyleSheet(f"QWidget#editorRoot {{ background: {bg}; }}")

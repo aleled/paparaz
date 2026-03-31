@@ -55,10 +55,12 @@ src/paparaz/
     core/
         __init__.py
         capture.py           # Win32 BitBlt multi-monitor capture (DPI-aware)
-        elements.py          # 10 element types: Pen, Brush, Line, Arrow, Rect,
-                             #   Ellipse, Text, Number, Mask, Image
+        elements.py          # 11 element types: Pen, Brush, Line, Arrow, CurvedArrow,
+                             #   Rect, Ellipse, Text, Number, Mask, Image
                              # ElementStyle: colors, width, opacity, shadow,
                              #   font, cap/join/dash
+                             # set_selection_accent(hex): updates SEL_COLOR class var
+                             #   so all selection visuals use the active theme accent
         history.py           # Undo/Redo via Command pattern (200-step stack)
         export.py            # save_png, save_jpg, save_svg, copy_to_clipboard
         settings.py          # JSON config in ~/.paparaz/settings.json
@@ -71,20 +73,26 @@ src/paparaz/
                              # Wires all signals between components
         canvas.py            # AnnotationCanvas: paint, zoom, pan, hover, double-click
                              # Style template + selected element live editing
-        toolbar.py           # Flameshot-style circular purple buttons (40px, drop shadow)
+        toolbar.py           # circular purple buttons (40px, drop shadow)
         side_panel.py        # Per-tool settings sections + element property inspector
                              # Shadow controls, text controls, number controls
-        icons.py             # 32 SVG Material Design icons (white on transparent)
+        icons.py             # SVG icons for all tools (white on transparent)
+        stamps.py            # 32 predefined SVG stamps (16 solid + 10 transparent-bg
+                             #   variants + 6 utility text stamps: WIP/DRAFT/TODO/DONE/FIX/NEW)
+        settings_dialog.py   # Settings dialog: sidebar with color indicators, visual
+                             #   theme cards (QToolButton grid), linked sliders, key badges
 
     tools/
         __init__.py
         base.py              # BaseTool: press, move, release, hover, double_click,
                              #   paint_hover, activate, deactivate
         select.py            # Click-select, drag-move, handle-resize, double-click edit
-        drawing.py           # PenTool, BrushTool, LineTool, ArrowTool,
+                             # Arrow-key precision move: 1 px / 10 px (Shift), undoable
+        drawing.py           # PenTool, BrushTool, LineTool, ArrowTool, CurvedArrowTool (Q),
                              #   RectangleTool, EllipseTool (all with Shift-constrain)
         special.py           # TextTool (rich text, re-edit), NumberingTool (ghost preview),
-                             #   EraserTool (red hover), MasqueradeTool, FillTool (hover tint)
+                             #   EraserTool (theme-aware hover), MasqueradeTool, FillTool,
+                             #   StampTool (32 SVG stamps), EyedropperTool (I, loupe preview)
 
     utils/
         __init__.py

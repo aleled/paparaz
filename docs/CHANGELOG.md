@@ -1,5 +1,41 @@
 # PapaRaZ - Changelog
 
+## [0.9.4] - 2026-03-31
+
+### Precision Movement (Arrow Keys)
+- Arrow keys move selected element(s) by **1 px** per press; **Shift + arrow** moves **10 px**
+- Works for both single and multi-select; each move is undoable as a single Command
+- Supported on all element types via `move_by(dx, dy)`
+
+### Selection UX Overhaul
+- **Transparent selection overlay** — removed the opaque tinted fill; bounding box is now a thin 1px border only
+- **Smaller square handles** — resize handles reduced from 12 px circles to 7 px white squares with accent border
+- **Theme-aware accent** — selection border, handles, and rotation handle all use the current app theme accent color
+- `set_selection_accent(hex)` module-level function updates `AnnotationElement.SEL_COLOR` at runtime
+- Called automatically on every theme change and on editor startup
+
+### Eraser Hover — Theme Aware
+- Eraser circle hover preview now uses the app theme accent color instead of hardcoded red
+- Consistent with selection accent, adapts instantly on theme switch
+
+### Settings Dialog — Major Overhaul
+- **Sidebar** — replaced emoji+text items with custom per-item widgets: 3 px color indicator bar + bold label + subdued subtitle
+- **Appearance page** — visual `QToolButton` theme cards replace the flat dropdown; each card shows a 3-band color swatch (bg / accent / fg) with the theme name below; live preview on click
+- **Tools page** — line width and font size now use a linked `QSlider` + `QSpinBox` pair for drag-or-type editing
+- **Shortcuts page** — fixed shortcut labels now use styled `keyBadge` pill labels; multi-key combos shown as separate badge chips
+- `_BASE` stylesheet is now correctly applied (was defined but unused since v0.9.2); provides sidebar, card, badge, and slider styles on top of the theme-aware `build_dialog_qss` layer
+
+### Stamps — 32 Total (+16 New)
+- **10 transparent-background variants** — same graphic as existing stamps, solid background removed:
+  `check_t`, `cross_t`, `ok_t`, `bad_t`, `info_t`, `question_t`, `thumbsup_t`, `thumbsdown_t`, `priority_t`, `bug_t`
+- **6 new utility text stamps** — dashed/solid outlined text labels for workflow annotation:
+  `wip` (dashed orange), `draft` (dashed gray), `todo` (blue), `done` (green), `fix` (red), `new` (orange starburst)
+
+### Docs Cleanup
+- Removed all remaining Flameshot references from `PLAN.md`, `ARCHITECTURE.md`, `UI_SPEC.md`, `CHANGELOG.md`
+
+---
+
 ## [0.9.3] - 2026-03-30
 
 ### Curved Arrow Tool (Q)
@@ -324,7 +360,7 @@
 ### Enhanced Selection Visuals
 - **Purple selection border** (2px, #740096) with white inner glow
 - **Tinted overlay** on selected element bounding rect
-- **Circular handles** (12px, purple fill, white outline) matching Flameshot style
+- **Circular handles** (12px, purple fill, white outline) 
 - **Dimension badge**: floating black pill showing `W×H (X,Y)` below selected element
 
 ### Tool Hover Previews
@@ -387,7 +423,7 @@
 
 ## [0.2.0] - 2026-03-29
 
-### Flameshot UI Overhaul
+### UI Overhaul
 - Circular toolbar buttons (40px purple, white SVG icons, drop shadows)
 - 32 custom SVG Material Design icons
 - Dark overlay region selector with hole effect

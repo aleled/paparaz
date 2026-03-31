@@ -1,7 +1,7 @@
 # PapaRaZ - Master Development Plan
 
 ## Vision
-A minimal, fast, Flameshot-inspired screen capture and annotation tool for Windows.
+A minimal, fast, object-based screen capture and annotation tool for Windows.
 Each annotation is a discrete object that can be selected, moved, resized, and deleted.
 
 ---
@@ -69,16 +69,16 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 ---
 
 ## Phase 5: UI Polish & UX - COMPLETE
-**Goal**: Flameshot-style minimal toolbar, zoom, keyboard shortcuts.
+**Goal**: Minimal toolbar, zoom, keyboard shortcuts.
 
-- [x] 5.1 Flameshot-style circular toolbar (purple buttons, white SVG icons, drop shadows)
+- [x] 5.1 Circular toolbar (purple buttons, white SVG icons, drop shadows)
 - [x] 5.2 Zoom system (25%-400% presets + custom input + Ctrl+scroll)
 - [x] 5.3 Keyboard shortcuts for all tools (V,P,B,L,A,R,E,T,N,X,M + Ctrl combos)
 - [x] 5.4 Cursor changes per tool + hover previews (ghost shapes, highlights)
 - [x] 5.5 Tooltip hints on all toolbar buttons
 - [x] 5.6 Dark theme (#0d0d1a background, #1a1a2e panels, #740096 accent)
 - [x] 5.7 Status bar (current tool, zoom level, cursor position, hints)
-- [x] 5.8 Enhanced selection visuals (purple border, circular handles, dimension badge)
+- [x] 5.8 Enhanced selection visuals (theme-aware border, square handles, dimension badge, transparent overlay)
 - [x] 5.9 Per-tool side panel (sections auto-show/hide per active tool)
 - [x] 5.10 Edit mode banner when element selected
 - [x] 5.11 Double-click to re-edit text elements
@@ -128,7 +128,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Layers panel (element z-ordering with drag)
 - [x] Text outline / stroke on text — QPainterPath, side panel Outline section
 - [x] Curved arrows / Bezier curves — CurvedArrowElement, 3-click workflow, tangent arrowhead (Q)
-- [x] Stamp/emoji tool (16 predefined SVG stamps: check, cross, OK, BAD, APPROVED, REJECTED, star, heart, warning, info, question, thumbsup, thumbsdown, priority, bug, note)
+- [x] Stamp/emoji tool (32 SVG stamps: 16 original + 10 transparent-bg variants + 6 utility text stamps: WIP, DRAFT, TODO, DONE, FIX, NEW)
 - [ ] Magnifier tool (zoom loupe callout — source rect + zoomed circle annotation)
 - [ ] Video/GIF recording
 - [ ] Upload to cloud (Imgur, custom endpoint)
@@ -146,5 +146,5 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Completed
 
 ## Current Status: Phase 6 complete, Phase 7 nearly complete (testing remaining)
-**Version**: 0.9.3
-**Last updated**: 2026-03-30
+**Version**: 0.9.4
+**Last updated**: 2026-03-31

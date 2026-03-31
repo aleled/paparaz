@@ -8,9 +8,10 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QPushButton, QFileDialog,
     QColorDialog, QGroupBox, QScrollArea, QFrame,
     QListWidget, QListWidgetItem, QStackedWidget, QSizePolicy,
+    QToolButton, QSlider,
 )
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QColor, QFont, QIcon, QPixmap, QPainter
+from PySide6.QtGui import QColor, QFont, QIcon, QPixmap, QPainter, QPen, QBrush
 
 from paparaz.core.settings import SettingsManager
 from paparaz.ui.icons import combo_arrow_css
@@ -21,97 +22,139 @@ from paparaz.ui.app_theme import APP_THEMES, get_theme, build_dialog_qss
 # ---------------------------------------------------------------------------
 
 _BASE = """
-QDialog { background: #13131f; color: #ddd; font-size: 12px; }
+QDialog { background: #0f0f1a; color: #ddd; font-size: 12px; }
 
-/* Sidebar */
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
 QListWidget {
-    background: #1a1a2e; border: none; border-right: 1px solid #2a2a45;
-    outline: 0; font-size: 12px; color: #aaa;
+    background: #13131f; border: none;
+    border-right: 1px solid #222236; outline: 0;
 }
 QListWidget::item {
-    padding: 10px 14px; border-radius: 0;
+    padding: 0; border-radius: 0; color: #888;
+    min-height: 48px;
 }
 QListWidget::item:selected {
-    background: #2a1040; color: #fff; border-left: 3px solid #740096;
+    background: #1d0b30; color: #e0b0ff;
+    border-left: 3px solid #9b30c8;
 }
-QListWidget::item:hover:!selected { background: #1e1e38; color: #ccc; }
+QListWidget::item:hover:!selected {
+    background: #18182c; color: #bbb;
+}
 
-/* Content area */
+/* ── Content area ─────────────────────────────────────────────────────────── */
 QScrollArea { border: none; background: transparent; }
 QWidget#page { background: transparent; }
 
-/* Groups */
+/* ── Card groups ─────────────────────────────────────────────────────────── */
 QGroupBox {
-    color: #666; font-size: 10px; font-weight: bold; letter-spacing: 1px;
-    border: none; border-top: 1px solid #2a2a45;
-    margin-top: 18px; padding-top: 14px;
+    background: #13131f; border: 1px solid #222236;
+    border-radius: 8px; margin-top: 24px; padding: 16px 14px 12px 14px;
+    font-size: 10px; font-weight: bold; letter-spacing: 1.2px;
+    color: #555;
 }
 QGroupBox::title {
-    subcontrol-origin: margin; left: 0; top: -1px;
-    padding: 0 6px 0 0; color: #555;
+    subcontrol-origin: margin; subcontrol-position: top left;
+    left: 12px; top: 0px; padding: 0 6px;
+    background: #0f0f1a; color: #555;
 }
 
-/* Inputs */
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
 QLineEdit, QSpinBox, QComboBox, QDoubleSpinBox {
-    background: #1e1e38; color: #ddd; border: 1px solid #2e2e50;
-    border-radius: 5px; padding: 5px 9px; min-height: 26px; font-size: 12px;
+    background: #1a1a2e; color: #ddd; border: 1px solid #2a2a45;
+    border-radius: 6px; padding: 6px 10px; min-height: 28px; font-size: 12px;
 }
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QDoubleSpinBox:focus {
-    border-color: #740096; background: #221030;
+    border-color: #8800bb; background: #1c0f2a;
 }
 QComboBox::drop-down { border: none; width: 22px; }
 QSpinBox::up-button, QSpinBox::down-button,
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
-    background: #2a2a45; border: none; border-radius: 2px; width: 16px;
+    background: #252540; border: none; border-radius: 2px; width: 16px;
 }
 
-/* Checkboxes */
-QCheckBox { color: #ccc; spacing: 8px; }
+/* ── Sliders ─────────────────────────────────────────────────────────────── */
+QSlider::groove:horizontal {
+    height: 4px; background: #2a2a45; border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    background: #8800bb; width: 14px; height: 14px;
+    margin: -5px 0; border-radius: 7px; border: 2px solid #1a1a2e;
+}
+QSlider::handle:horizontal:hover { background: #aa33dd; }
+QSlider::sub-page:horizontal { background: #8800bb; border-radius: 2px; }
+
+/* ── Checkboxes ──────────────────────────────────────────────────────────── */
+QCheckBox { color: #bbb; spacing: 9px; }
 QCheckBox::indicator {
-    width: 16px; height: 16px; border: 1px solid #444; border-radius: 4px; background: #1e1e38;
+    width: 18px; height: 18px; border: 1px solid #3a3a5a;
+    border-radius: 5px; background: #1a1a2e;
 }
-QCheckBox::indicator:checked { background: #740096; border-color: #740096; }
+QCheckBox::indicator:checked { background: #8800bb; border-color: #8800bb; }
+QCheckBox::indicator:checked:hover { background: #aa33dd; }
 
-/* Buttons */
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
 QPushButton {
     background: #740096; color: white; border: none;
-    border-radius: 5px; padding: 7px 20px; font-weight: bold; font-size: 12px;
+    border-radius: 6px; padding: 8px 22px; font-weight: 600; font-size: 12px;
+    letter-spacing: 0.3px;
 }
-QPushButton:hover  { background: #9e2ac0; }
+QPushButton:hover   { background: #9e2ac0; }
 QPushButton:pressed { background: #5a0074; }
 
 QPushButton#secondary {
-    background: #1e1e38; color: #aaa; border: 1px solid #2e2e50;
-    padding: 7px 16px; font-weight: normal;
+    background: #1a1a2e; color: #888; border: 1px solid #2a2a45;
+    padding: 8px 18px; font-weight: 400;
 }
-QPushButton#secondary:hover { background: #262645; color: #ddd; }
+QPushButton#secondary:hover { background: #222240; color: #ccc; }
 
 QPushButton#danger {
-    background: #3a0a0a; color: #ff8080; border: 1px solid #6b1010;
-    padding: 7px 16px; font-weight: normal;
+    background: transparent; color: #cc5555; border: 1px solid #5a1515;
+    padding: 8px 16px; font-weight: 400; border-radius: 6px;
 }
-QPushButton#danger:hover { background: #5a1010; color: #ffaaaa; }
+QPushButton#danger:hover { background: #2a0808; color: #ff7777; }
 
 QPushButton#colorBtn {
-    min-width: 28px; max-width: 28px; min-height: 24px; max-height: 24px;
-    border: 2px solid #444; border-radius: 4px; padding: 0;
+    min-width: 34px; max-width: 34px; min-height: 28px; max-height: 28px;
+    border: 2px solid #3a3a5a; border-radius: 6px; padding: 0;
 }
-QPushButton#colorBtn:hover { border-color: #888; }
+QPushButton#colorBtn:hover { border-color: #8800bb; }
 
 QPushButton#iconBtn {
-    background: #1e1e38; border: 2px solid #2e2e50;
-    border-radius: 6px; padding: 4px;
+    background: #1a1a2e; border: 2px solid #2a2a45;
+    border-radius: 8px; padding: 4px;
 }
-QPushButton#iconBtn:checked, QPushButton#iconBtn:hover { border-color: #740096; }
+QPushButton#iconBtn:checked { border-color: #8800bb; background: #1d0b30; }
+QPushButton#iconBtn:hover   { border-color: #8800bb; }
 
-/* Labels */
-QLabel { color: #ccc; font-size: 12px; }
-QLabel#heading { color: #fff; font-size: 16px; font-weight: bold; }
-QLabel#sub { color: #666; font-size: 11px; }
-QLabel#version { color: #740096; font-size: 13px; font-weight: bold; }
+QPushButton#themeCard {
+    background: #13131f; border: 2px solid #222236;
+    border-radius: 10px; padding: 8px; text-align: left; color: #aaa;
+    min-width: 110px; max-width: 130px; min-height: 80px;
+}
+QPushButton#themeCard:checked { border-color: #8800bb; background: #1d0b30; color: #e0b0ff; }
+QPushButton#themeCard:hover   { border-color: #555577; }
 
-/* Bottom bar */
-QFrame#bottomBar { background: #1a1a2e; border-top: 1px solid #2a2a45; }
+QToolButton#themeCard {
+    background: #13131f; border: 2px solid #222236;
+    border-radius: 10px; padding: 10px 8px 8px 8px; color: #aaa;
+    font-size: 11px; font-weight: 600;
+    min-width: 110px; max-width: 140px; min-height: 88px;
+}
+QToolButton#themeCard:checked { border-color: #8800bb; background: #1d0b30; color: #e0b0ff; }
+QToolButton#themeCard:hover:!checked { border-color: #555577; }
+
+/* ── Labels ──────────────────────────────────────────────────────────────── */
+QLabel            { color: #bbb; font-size: 12px; }
+QLabel#heading    { color: #fff; font-size: 18px; font-weight: bold; }
+QLabel#sub        { color: #555; font-size: 11px; margin-top: 2px; }
+QLabel#sectionLbl { color: #666; font-size: 10px; font-weight: bold; letter-spacing: 1px;
+                    margin-top: 18px; margin-bottom: 4px; }
+QLabel#version    { color: #8800bb; font-size: 14px; font-weight: bold; }
+QLabel#keyBadge   { color: #999; background: #1a1a2e; border: 1px solid #2a2a45;
+                    border-radius: 4px; padding: 2px 6px; font-size: 11px; }
+
+/* ── Bottom bar ──────────────────────────────────────────────────────────── */
+QFrame#bottomBar { background: #0d0d18; border-top: 1px solid #1e1e38; }
 """
 
 
@@ -154,6 +197,63 @@ def _color_swatch(color: str) -> QPixmap:
     return pix
 
 
+def _make_theme_swatch(tdata: dict) -> QIcon:
+    """Three-band color icon showing bg/accent/fg for a theme."""
+    pix = QPixmap(96, 34)
+    p = QPainter(pix)
+    band = 32
+    for i, c in enumerate([tdata["bg1"], tdata["accent"], tdata["fg"]]):
+        p.fillRect(i * band, 0, band, 34, QColor(c))
+    # right-most leftover
+    p.fillRect(3 * band, 0, pix.width() - 3 * band, 34, QColor(tdata["fg"]))
+    p.end()
+    return QIcon(pix)
+
+
+def _nav_item(color: str, label: str, subtitle: str) -> QWidget:
+    """Custom sidebar item widget: thin color bar + two-line label."""
+    w = QWidget()
+    w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    row = QHBoxLayout(w)
+    row.setContentsMargins(14, 0, 8, 0)
+    row.setSpacing(12)
+
+    bar = QFrame()
+    bar.setFixedSize(3, 28)
+    bar.setStyleSheet(f"background: {color}; border-radius: 1px;")
+    row.addWidget(bar)
+
+    col = QVBoxLayout()
+    col.setSpacing(1)
+    name_lbl = QLabel(label)
+    name_lbl.setStyleSheet("color: #ccc; font-size: 12px; font-weight: 600; background: transparent;")
+    sub_lbl = QLabel(subtitle)
+    sub_lbl.setStyleSheet("color: #555; font-size: 10px; background: transparent;")
+    col.addWidget(name_lbl)
+    col.addWidget(sub_lbl)
+    row.addLayout(col)
+    row.addStretch()
+    return w
+
+
+def _slider_row(min_v: int, max_v: int, value: int, suffix: str = "") -> tuple[QSlider, QSpinBox]:
+    """Linked horizontal slider + spinbox pair."""
+    sl = QSlider(Qt.Orientation.Horizontal)
+    sl.setRange(min_v, max_v)
+    sl.setValue(value)
+
+    sp = QSpinBox()
+    sp.setRange(min_v, max_v)
+    sp.setValue(value)
+    if suffix:
+        sp.setSuffix(suffix)
+    sp.setFixedWidth(70)
+
+    sl.valueChanged.connect(sp.setValue)
+    sp.valueChanged.connect(sl.setValue)
+    return sl, sp
+
+
 # ---------------------------------------------------------------------------
 # Main Dialog
 # ---------------------------------------------------------------------------
@@ -166,9 +266,10 @@ class SettingsDialog(QDialog):
         self.setMinimumSize(780, 560)
         self.resize(860, 600)
         self.setWindowFlags(Qt.WindowType.Dialog)  # no always-on-top
-        # Build stylesheet: use the currently saved app theme, falling back to _BASE
+        # Build stylesheet: _BASE provides sidebar/card/badge rules; build_dialog_qss
+        # overlays theme-specific colors (accent, bg, fg) on top of them.
         theme = get_theme(settings_manager.settings.app_theme)
-        self.setStyleSheet(build_dialog_qss(theme) + combo_arrow_css())
+        self.setStyleSheet(_BASE + build_dialog_qss(theme) + combo_arrow_css())
 
         self._sm = settings_manager
         self._s  = settings_manager.settings
@@ -183,19 +284,20 @@ class SettingsDialog(QDialog):
         self._nav.setIconSize(QSize(18, 18))
         self._nav.setSpacing(2)
 
-        sections = [
-            ("📸", "Capture"),
-            ("🎨", "Appearance"),
-            ("✏️", "Tools"),
-            ("⌨️", "Shortcuts"),
-            ("🎭", "Presets"),
-            ("🔄", "Updates"),
-            ("ℹ️",  "About"),
+        _NAV_ITEMS = [
+            ("#0088dd", "Capture",    "Screenshots & save"),
+            ("#9922cc", "Appearance", "Theme & icons"),
+            ("#22aa66", "Tools",      "Defaults & memory"),
+            ("#dd7700", "Shortcuts",  "Keyboard bindings"),
+            ("#dd3366", "Presets",    "Style presets"),
+            ("#0099bb", "Updates",    "Version & startup"),
+            ("#666688", "About",      "Info & credits"),
         ]
-        for icon, label in sections:
-            item = QListWidgetItem(f"  {icon}  {label}")
-            item.setSizeHint(QSize(180, 42))
+        for color, label, subtitle in _NAV_ITEMS:
+            item = QListWidgetItem()
+            item.setSizeHint(QSize(180, 56))
             self._nav.addItem(item)
+            self._nav.setItemWidget(item, _nav_item(color, label, subtitle))
 
         self._nav.currentRowChanged.connect(self._switch_page)
 
@@ -344,49 +446,87 @@ class SettingsDialog(QDialog):
         vbox.addWidget(QLabel("Appearance", objectName="heading"))
         vbox.addSpacing(4)
         vbox.addWidget(QLabel("Customize the look of the app and tray icon.", objectName="sub"))
+        vbox.addSpacing(16)
 
-        # UI Theme
-        grp, form = _grp("UI Theme")
-        self._theme_combo = QComboBox()
+        # ── UI Theme cards ────────────────────────────────────────────────────
+        theme_section = QLabel("UI THEME", objectName="sectionLbl")
+        vbox.addWidget(theme_section)
+        vbox.addSpacing(8)
+
+        self._selected_theme = getattr(self._s, 'app_theme', 'dark')
+        self._theme_btns: dict[str, QToolButton] = {}
+
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(10)
+        cards_row.setContentsMargins(0, 0, 0, 0)
         for tid, tdata in APP_THEMES.items():
-            self._theme_combo.addItem(tdata["name"], tid)
-        idx = self._theme_combo.findData(getattr(self._s, 'app_theme', 'dark'))
-        if idx >= 0:
-            self._theme_combo.setCurrentIndex(idx)
-        self._theme_combo.currentIndexChanged.connect(self._on_theme_preview)
-        form.addRow("App theme:", self._theme_combo)
-        vbox.addWidget(grp)
+            btn = QToolButton()
+            btn.setObjectName("themeCard")
+            btn.setCheckable(True)
+            btn.setAutoExclusive(True)
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            btn.setText(tdata["name"])
+            btn.setIcon(_make_theme_swatch(tdata))
+            btn.setIconSize(QSize(96, 34))
+            btn.setChecked(tid == self._selected_theme)
+            btn.clicked.connect(lambda checked, t=tid: self._select_theme(t))
+            cards_row.addWidget(btn)
+            self._theme_btns[tid] = btn
+        cards_row.addStretch()
 
-        # Tray icon color
-        grp2, form2 = _grp("Tray Icon")
+        cards_widget = QWidget()
+        cards_widget.setLayout(cards_row)
+        vbox.addWidget(cards_widget)
+        vbox.addSpacing(20)
+
+        # ── Tray icon color ───────────────────────────────────────────────────
+        tray_section = QLabel("TRAY ICON COLOR", objectName="sectionLbl")
+        vbox.addWidget(tray_section)
+        vbox.addSpacing(8)
+
         from paparaz.ui.tray import TRAY_ICON_COLORS
         self._tray_color = getattr(self._s, 'tray_icon_color', '#E53935')
         icon_row = QHBoxLayout()
         icon_row.setSpacing(8)
+        icon_row.setContentsMargins(0, 0, 0, 0)
         self._icon_btns: dict[str, QPushButton] = {}
         for hex_color, name in TRAY_ICON_COLORS.items():
             btn = QPushButton()
             btn.setObjectName("iconBtn")
             btn.setCheckable(True)
-            btn.setFixedSize(36, 36)
+            btn.setFixedSize(38, 38)
             btn.setToolTip(name)
-            pix = QPixmap(24, 24)
-            pix.fill(QColor(hex_color))
+            pix = QPixmap(26, 26)
+            pix.fill(Qt.GlobalColor.transparent)
+            p = QPainter(pix)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setBrush(QBrush(QColor(hex_color)))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(1, 1, 24, 24)
+            p.end()
             btn.setIcon(QIcon(pix))
-            btn.setIconSize(QSize(22, 22))
+            btn.setIconSize(QSize(26, 26))
             btn.setChecked(hex_color == self._tray_color)
             btn.clicked.connect(lambda checked, c=hex_color: self._select_icon_color(c))
             icon_row.addWidget(btn)
             self._icon_btns[hex_color] = btn
-        icon_row.addStretch()
+
         self._tray_color_lbl = QLabel(TRAY_ICON_COLORS.get(self._tray_color, ''))
         self._tray_color_lbl.setObjectName("sub")
+        self._tray_color_lbl.setStyleSheet("margin-left: 8px;")
         icon_row.addWidget(self._tray_color_lbl)
-        form2.addRow("Icon color:", icon_row)
-        vbox.addWidget(grp2)
+        icon_row.addStretch()
 
-        # Default annotation theme preset
-        grp3, form3 = _grp("Default Annotation Preset")
+        icon_row_w = QWidget()
+        icon_row_w.setLayout(icon_row)
+        vbox.addWidget(icon_row_w)
+        vbox.addSpacing(20)
+
+        # ── Default annotation preset ─────────────────────────────────────────
+        preset_section = QLabel("DEFAULT ANNOTATION PRESET", objectName="sectionLbl")
+        vbox.addWidget(preset_section)
+        vbox.addSpacing(8)
+
         from paparaz.ui.theme_presets import PRESETS, PRESET_ORDER
         self._theme_preset_combo = QComboBox()
         self._theme_preset_combo.addItem("— None —", "")
@@ -399,11 +539,10 @@ class SettingsDialog(QDialog):
             if self._theme_preset_combo.itemData(i) == current_pid:
                 self._theme_preset_combo.setCurrentIndex(i)
                 break
-        form3.addRow("Preset:", self._theme_preset_combo)
+        vbox.addWidget(self._theme_preset_combo)
         note = QLabel("Applied automatically when the editor opens.")
         note.setObjectName("sub")
-        form3.addRow("", note)
-        vbox.addWidget(grp3)
+        vbox.addWidget(note)
 
         vbox.addStretch()
         return _scroll(inner)
@@ -446,20 +585,21 @@ class SettingsDialog(QDialog):
 
         # Stroke
         grp2, form2 = _grp("Stroke & Font")
-        self._line_width = QSpinBox()
-        self._line_width.setRange(1, 50)
-        self._line_width.setValue(td.line_width)
-        self._line_width.setSuffix(" px")
-        form2.addRow("Line width:", self._line_width)
+
+        lw_sl, self._line_width = _slider_row(1, 50, td.line_width, " px")
+        lw_row = QHBoxLayout()
+        lw_row.addWidget(lw_sl, 1)
+        lw_row.addWidget(self._line_width)
+        form2.addRow("Line width:", lw_row)
 
         self._font_family = QLineEdit(td.font_family)
         form2.addRow("Font family:", self._font_family)
 
-        self._font_size = QSpinBox()
-        self._font_size.setRange(6, 120)
-        self._font_size.setValue(td.font_size)
-        self._font_size.setSuffix(" pt")
-        form2.addRow("Font size:", self._font_size)
+        fs_sl, self._font_size = _slider_row(6, 120, td.font_size, " pt")
+        fs_row = QHBoxLayout()
+        fs_row.addWidget(fs_sl, 1)
+        fs_row.addWidget(self._font_size)
+        form2.addRow("Font size:", fs_row)
         vbox.addWidget(grp2)
 
         # Shadow defaults
@@ -532,20 +672,29 @@ class SettingsDialog(QDialog):
 
         grp2, form2 = _grp("Editor (fixed)")
         for label, keys in [
-            ("Undo / Redo",          "Ctrl+Z / Ctrl+Y"),
-            ("Zoom in / out",        "Ctrl+= / Ctrl+−"),
-            ("Zoom reset",           "Ctrl+0"),
-            ("Pan",                  "Middle-click drag"),
-            ("Finalize text",        "Ctrl+Enter"),
-            ("Multi-select",         "Shift+click / Rubber-band"),
-            ("Delete selected",      "Delete"),
-            ("Z-order front/back",   "Ctrl+] / Ctrl+["),
-            ("Z-order up/down",      "Ctrl+Shift+] / Ctrl+Shift+["),
-            ("Copy / Paste",         "Ctrl+C / Ctrl+V"),
+            ("Undo / Redo",          ["Ctrl+Z", "Ctrl+Y"]),
+            ("Zoom in / out",        ["Ctrl+=", "Ctrl+−"]),
+            ("Zoom reset",           ["Ctrl+0"]),
+            ("Pan",                  ["Middle-click drag"]),
+            ("Finalize text",        ["Ctrl+Enter"]),
+            ("Multi-select",         ["Shift+click", "Rubber-band"]),
+            ("Delete selected",      ["Delete"]),
+            ("Precision move",       ["Arrow keys", "+Shift ×10"]),
+            ("Z-order front/back",   ["Ctrl+]", "Ctrl+["]),
+            ("Z-order up/down",      ["Ctrl+Shift+]", "Ctrl+Shift+["]),
+            ("Copy / Paste",         ["Ctrl+C", "Ctrl+V"]),
         ]:
-            lbl = QLabel(keys)
-            lbl.setStyleSheet("color:#888; font-size:11px;")
-            form2.addRow(f"{label}:", lbl)
+            badge_row = QHBoxLayout()
+            badge_row.setSpacing(4)
+            badge_row.setContentsMargins(0, 0, 0, 0)
+            for k in keys:
+                badge = QLabel(k)
+                badge.setObjectName("keyBadge")
+                badge_row.addWidget(badge)
+            badge_row.addStretch()
+            badge_w = QWidget()
+            badge_w.setLayout(badge_row)
+            form2.addRow(f"{label}:", badge_w)
         vbox.addWidget(grp2)
 
         vbox.addStretch()
@@ -689,11 +838,9 @@ class SettingsDialog(QDialog):
         vbox.addSpacing(8)
 
         ack = QLabel(
-            "Inspired by <a href='https://flameshot.org' style='color:#740096;'>Flameshot</a> (GPLv3). "
-            "PapaRaZ is an independent Python/PySide6 reimplementation — "
-            "no Flameshot source code was copied or adapted."
+            "PapaRaZ is an independent screen-capture and annotation tool built from scratch "
+            "in Python with PySide6. MIT License."
         )
-        ack.setOpenExternalLinks(True)
         ack.setWordWrap(True)
         ack.setStyleSheet("color: #555; font-size: 11px;")
         vbox.addWidget(ack)
@@ -739,13 +886,20 @@ class SettingsDialog(QDialog):
         from paparaz.utils.updater import check_for_updates_manual
         check_for_updates_manual(parent=self)
 
+    def _select_theme(self, theme_id: str):
+        """Called when user clicks a theme card — live-preview it."""
+        self._selected_theme = theme_id
+        for tid, btn in self._theme_btns.items():
+            btn.setChecked(tid == theme_id)
+        self._on_theme_preview()
+
     def _on_theme_preview(self):
         """Live-preview the chosen theme: re-style this dialog and the editor."""
-        theme_id = self._theme_combo.currentData()
+        theme_id = self._selected_theme
         if not theme_id:
             return
         theme = get_theme(theme_id)
-        self.setStyleSheet(build_dialog_qss(theme) + combo_arrow_css())
+        self.setStyleSheet(_BASE + build_dialog_qss(theme) + combo_arrow_css())
         if self.parent() and hasattr(self.parent(), 'apply_app_theme'):
             self.parent().apply_app_theme(theme_id)
 
@@ -767,7 +921,7 @@ class SettingsDialog(QDialog):
         s.show_tray_notification = self._tray_notify.isChecked()
 
         # Appearance
-        s.app_theme              = self._theme_combo.currentData()
+        s.app_theme              = self._selected_theme
         s.tray_icon_color        = self._tray_color
         s.default_theme_preset   = self._theme_preset_combo.currentData() or ""
 

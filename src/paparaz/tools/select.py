@@ -237,13 +237,46 @@ class SelectTool(BaseTool):
         self._multi_orig_positions.clear()
 
     def on_key_press(self, event: QKeyEvent):
-        if event.key() == Qt.Key.Key_Delete:
+        key = event.key()
+        if key == Qt.Key.Key_Delete:
             if self._multi_selected:
                 for elem in list(self._multi_selected):
                     self.canvas.delete_element(elem)
                 self._multi_selected.clear()
             elif self.canvas.selected_element:
                 self.canvas.delete_element(self.canvas.selected_element)
+
+        elif key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down):
+            step = 10 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else 1
+            dx = (-step if key == Qt.Key.Key_Left else step if key == Qt.Key.Key_Right else 0)
+            dy = (-step if key == Qt.Key.Key_Up   else step if key == Qt.Key.Key_Down  else 0)
+
+            if self._multi_selected:
+                elems = list(self._multi_selected)
+                origs = [self._capture_geometry(e) for e in elems]
+                for e in elems:
+                    e.move_by(dx, dy)
+                finals = [self._capture_geometry(e) for e in elems]
+                def _do(es=elems, fs=finals):
+                    for e, f in zip(es, fs): self._restore_geometry(e, f)
+                    self.canvas.update()
+                def _undo(es=elems, os=origs):
+                    for e, o in zip(es, os): self._restore_geometry(e, o)
+                    self.canvas.update()
+                self.canvas.history.record(Command("Move", _do, _undo))
+                self.canvas.update()
+
+            elif self.canvas.selected_element:
+                elem = self.canvas.selected_element
+                orig = self._capture_geometry(elem)
+                elem.move_by(dx, dy)
+                final = self._capture_geometry(elem)
+                def _do(e=elem, f=final):
+                    self._restore_geometry(e, f); self.canvas.update()
+                def _undo(e=elem, o=orig):
+                    self._restore_geometry(e, o); self.canvas.update()
+                self.canvas.history.record(Command("Move", _do, _undo))
+                self.canvas.update()
 
     def on_deactivate(self):
         super().on_deactivate()

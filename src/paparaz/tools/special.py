@@ -435,16 +435,19 @@ class EraserTool(BaseTool):
             self.canvas.update()
 
     def paint_hover(self, painter: QPainter):
-        """Highlight the element that would be erased (red tint)."""
+        """Highlight the element that would be erased using theme accent."""
         if not self._hovered_element:
             return
+        from paparaz.core.elements import AnnotationElement
+        accent = AnnotationElement.SEL_COLOR
+        accent_fill = QColor(accent.red(), accent.green(), accent.blue(), 25)
         rect = self._hovered_element.bounding_rect()
-        painter.setPen(QPen(QColor(220, 50, 50, 180), 2))
-        painter.setBrush(QColor(220, 50, 50, 30))
+        painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 180), 2))
+        painter.setBrush(accent_fill)
         painter.drawRect(rect.adjusted(-3, -3, 3, 3))
 
         # X icon
-        painter.setPen(QPen(QColor(220, 50, 50, 200), 2))
+        painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 200), 2))
         cx, cy = rect.center().x(), rect.center().y()
         s = 8
         painter.drawLine(QPointF(cx - s, cy - s), QPointF(cx + s, cy + s))

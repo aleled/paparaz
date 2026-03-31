@@ -2,7 +2,7 @@
 
 import math
 from PySide6.QtCore import Qt, QPointF, QRectF
-from PySide6.QtGui import QMouseEvent, QKeyEvent, QPainter, QColor, QPen
+from PySide6.QtGui import QMouseEvent, QKeyEvent, QPainter, QColor, QPen, QCursor
 from paparaz.tools.base import BaseTool, ToolType
 from paparaz.core.elements import (
     AnnotationElement, TextElement, NumberElement, StampElement,
@@ -35,6 +35,20 @@ _ANCHOR_FN = {
 
 # Handle index 8 is the rotation handle
 _ROTATION_HANDLE = 8
+
+
+# Handle index → resize cursor shape
+_HANDLE_CURSORS = {
+    0: Qt.CursorShape.SizeFDiagCursor,   # TL
+    1: Qt.CursorShape.SizeVerCursor,     # TC
+    2: Qt.CursorShape.SizeBDiagCursor,   # TR
+    3: Qt.CursorShape.SizeHorCursor,     # LM
+    4: Qt.CursorShape.SizeHorCursor,     # RM
+    5: Qt.CursorShape.SizeBDiagCursor,   # BL
+    6: Qt.CursorShape.SizeVerCursor,     # BC
+    7: Qt.CursorShape.SizeFDiagCursor,   # BR
+    8: Qt.CursorShape.PointingHandCursor,  # rotation
+}
 
 
 class SelectTool(BaseTool):
@@ -118,6 +132,7 @@ class SelectTool(BaseTool):
             self._store_original(clicked)
             self._dragging = True
             self._drag_start = pos
+            self.canvas.setCursor(Qt.CursorShape.ClosedHandCursor)
         else:
             # Start rubber-band selection
             self._multi_selected.clear()
@@ -166,6 +181,23 @@ class SelectTool(BaseTool):
         if hovered != self._hovered_element:
             self._hovered_element = hovered
             self.canvas.update()
+
+        # Dynamic cursor feedback
+        sel = self.canvas.selected_element
+        if sel:
+            handle = sel.handle_at(pos)
+            if handle is not None:
+                self.canvas.setCursor(_HANDLE_CURSORS.get(handle, Qt.CursorShape.ArrowCursor))
+                return
+            if sel.contains_point(pos):
+                self.canvas.setCursor(Qt.CursorShape.SizeAllCursor)
+                return
+        if self._multi_selected:
+            for elem in self._multi_selected:
+                if elem.visible and elem.contains_point(pos):
+                    self.canvas.setCursor(Qt.CursorShape.SizeAllCursor)
+                    return
+        self.canvas.setCursor(Qt.CursorShape.ArrowCursor)
 
     def paint_hover(self, painter: QPainter):
         # Rubber-band rectangle
@@ -235,6 +267,8 @@ class SelectTool(BaseTool):
         self._resizing = False
         self._handle_index = None
         self._multi_orig_positions.clear()
+        # Restore cursor after drag/resize ends
+        self.canvas.setCursor(Qt.CursorShape.ArrowCursor)
 
     def on_key_press(self, event: QKeyEvent):
         key = event.key()

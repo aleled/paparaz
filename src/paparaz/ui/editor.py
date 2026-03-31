@@ -106,8 +106,9 @@ class EditorWindow(QWidget):
         self._close_btn_overlay.setFixedSize(26, 26)
         self._close_btn_overlay.setToolTip("Close (Esc)")
         self._close_btn_overlay.setStyleSheet(
-            "QToolButton{background:#740096;border:none;border-radius:13px;padding:0;}"
-            "QToolButton:hover{background:#c03fdd;}"
+            "QToolButton{background:transparent;border:none;border-radius:13px;padding:0;}"
+            "QToolButton:hover{background:#cc2222;}"
+            "QToolButton:pressed{background:#991111;}"
         )
         self._close_btn_overlay.clicked.connect(self._confirm_close)
 

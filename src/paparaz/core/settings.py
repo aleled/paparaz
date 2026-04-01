@@ -12,6 +12,9 @@ DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "settings.json"
 @dataclass
 class HotkeySettings:
     capture: str = "PrintScreen"
+    capture_fullscreen: str = "Ctrl+PrintScreen"
+    capture_window: str = "Alt+PrintScreen"
+    capture_repeat: str = "Shift+PrintScreen"
     undo: str = "Ctrl+Z"
     redo: str = "Ctrl+Y"
     save: str = "Ctrl+S"
@@ -68,7 +71,38 @@ class AppSettings:
     # Behavior
     hide_editor_before_capture: bool = True
     confirm_close_unsaved: bool = True
+    exit_on_close: bool = False              # True = quit app when last editor closes
     canvas_background: str = "dark"          # "dark" | "checkerboard" | hex color e.g. "#ffffff"
+    panel_auto_hide_ms: int = 3000           # ms before panel auto-hides after deselect
+    zoom_scroll_factor: float = 1.1          # multiplier per scroll notch (1.05 – 1.3)
+    default_panel_mode: str = "auto"         # "auto" | "pinned" | "hidden"
+    default_zoom: str = "fit"                # "fit" | "100" | "fill" | "remember"
+    last_zoom_level: float = 1.0             # saved when default_zoom == "remember"
+    # Capture
+    capture_cursor: bool = False             # include mouse cursor in screenshots
+    capture_sound: bool = False              # play shutter sound on capture
+    # Output
+    png_compression: int = 6                 # 0=fast/large .. 9=slow/small
+    auto_copy_on_save: bool = False          # copy to clipboard after every save
+    open_after_save: bool = False            # open saved file in default app
+    # Auto-save / crash recovery
+    auto_save_interval: int = 60             # seconds between auto-save snapshots (0 = disabled)
+    crash_recovery: bool = True              # offer to restore on next launch
+    # Tool defaults
+    highlight_default_color: str = "#FFFF00"
+    highlight_default_width: int = 16
+    default_stamp_id: str = "check"
+    default_blur_pixels: int = 10
+    # Window geometry
+    window_geometry: str = ""                # saved as "x,y,w,h" or empty
+    # Snap
+    snap_enabled: bool = True                # master snap toggle
+    snap_to_canvas: bool = True              # snap to canvas/image edges & center
+    snap_to_elements: bool = True            # snap to other element edges
+    snap_threshold: int = 8                  # pixel distance for snapping
+    snap_grid_enabled: bool = False          # snap to grid
+    snap_grid_size: int = 20                 # grid spacing in pixels
+    show_grid: bool = False                  # render grid overlay on canvas
 
 
 class SettingsManager:
@@ -112,7 +146,19 @@ class SettingsManager:
                    "auto_check_updates",
                    "filename_pattern", "subfolder_pattern",
                    "save_counter", "auto_save", "recent_colors",
-                   "hide_editor_before_capture", "confirm_close_unsaved", "canvas_background"):
+                   "hide_editor_before_capture", "confirm_close_unsaved", "exit_on_close",
+                   "canvas_background",
+                   "panel_auto_hide_ms", "zoom_scroll_factor",
+                   "default_panel_mode", "default_zoom", "last_zoom_level",
+                   "capture_cursor", "capture_sound",
+                   "png_compression", "auto_copy_on_save", "open_after_save",
+                   "auto_save_interval", "crash_recovery",
+                   "highlight_default_color", "highlight_default_width",
+                   "default_stamp_id", "default_blur_pixels",
+                   "window_geometry",
+                   "snap_enabled", "snap_to_canvas", "snap_to_elements",
+                   "snap_threshold", "snap_grid_enabled", "snap_grid_size",
+                   "show_grid"):
             if k in data:
                 setattr(self.settings, k, data[k])
         # Backward compatibility: migrate old single blur field to both axes

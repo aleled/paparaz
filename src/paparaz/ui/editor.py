@@ -14,6 +14,7 @@ from paparaz.ui.icons import get_icon
 from paparaz.ui.canvas import AnnotationCanvas
 from paparaz.ui.toolbar import MultiEdgeToolbar
 from paparaz.ui.side_panel import SidePanel
+from paparaz.ui.layers_panel import LayersPanel
 from paparaz.tools.base import ToolType
 from paparaz.tools.select import SelectTool
 from paparaz.tools.drawing import (
@@ -22,7 +23,7 @@ from paparaz.tools.drawing import (
 )
 from paparaz.tools.special import (
     TextTool, NumberingTool, EraserTool, MasqueradeTool, FillTool, StampTool, CropTool, SliceTool,
-    EyedropperTool,
+    EyedropperTool, MagnifierTool,
 )
 from paparaz.core.export import save_png, save_jpg, save_svg, copy_to_clipboard
 from paparaz.core.elements import (
@@ -90,6 +91,17 @@ class EditorWindow(QWidget):
         self._side_panel.hide()
         self._panel_initially_placed = False  # set True after first show + layout pass
 
+        # Apply default panel mode from settings
+        if self._settings_manager:
+            panel_mode = getattr(self._settings_manager.settings, 'default_panel_mode', 'auto')
+            self._side_panel.set_mode(panel_mode)
+
+        # Layers panel (floating, hidden by default)
+        self._layers_panel = LayersPanel(parent=None)
+        self._layers_panel.hide()
+        self._layers_panel.set_canvas(self._canvas)
+        self._layers_panel.element_selected.connect(self._on_layer_element_selected)
+
         # Track current tool type for per-tool property persistence
         self._current_tool_type = ToolType.SELECT
 
@@ -98,6 +110,15 @@ class EditorWindow(QWidget):
         self._settings_save_timer.setSingleShot(True)
         self._settings_save_timer.setInterval(2000)
         self._settings_save_timer.timeout.connect(self._flush_tool_properties)
+
+        # Auto-save recovery timer
+        self._recovery_timer = QTimer(self)
+        self._recovery_timer.timeout.connect(self._auto_save_recovery)
+        interval = 0
+        if self._settings_manager:
+            interval = getattr(self._settings_manager.settings, 'auto_save_interval', 60)
+        if interval > 0:
+            self._recovery_timer.start(interval * 1000)
 
         # Always-visible pinned close button at top-right corner
         self._close_btn_overlay = QToolButton(self)
@@ -144,7 +165,14 @@ class EditorWindow(QWidget):
             ToolType.CROP:       self._crop_tool,
             ToolType.SLICE:      self._slice_tool,
             ToolType.EYEDROPPER: EyedropperTool(self._canvas),
+            ToolType.MAGNIFIER: MagnifierTool(self._canvas),
         }
+
+        # Wire specialized tool defaults from settings
+        if self._settings_manager:
+            _s = self._settings_manager.settings
+            self._masquerade_tool.pixel_size = getattr(_s, 'default_blur_pixels', 10)
+            self._stamp_tool.stamp_id = getattr(_s, 'default_stamp_id', 'check')
 
         # --- Toolbar signals ---
         self._multi_toolbar.tool_selected.connect(self._on_tool_selected)
@@ -162,6 +190,8 @@ class EditorWindow(QWidget):
         self._multi_toolbar.crop_requested.connect(lambda: self._on_tool_selected(ToolType.CROP))
         self._multi_toolbar.theme_preset_requested.connect(self._show_theme_presets)
         self._multi_toolbar.settings_requested.connect(self._show_settings)
+        self._multi_toolbar.layers_requested.connect(self._toggle_layers_panel)
+        self._canvas.elements_changed.connect(self._on_elements_changed)
 
         # --- Side panel signals ---
         self._side_panel.fg_color_changed.connect(self._canvas.set_foreground_color)
@@ -249,6 +279,15 @@ class EditorWindow(QWidget):
             self.apply_app_theme(self._settings_manager.settings.app_theme)
             canvas_bg = getattr(self._settings_manager.settings, 'canvas_background', 'dark')
             self._canvas.set_canvas_background(canvas_bg)
+            # Apply snap settings
+            s = self._settings_manager.settings
+            self._canvas.snap_enabled = s.snap_enabled
+            self._canvas.snap_to_canvas = s.snap_to_canvas
+            self._canvas.snap_to_elements = s.snap_to_elements
+            self._canvas.snap_threshold = s.snap_threshold
+            self._canvas.snap_grid_enabled = s.snap_grid_enabled
+            self._canvas.snap_grid_size = s.snap_grid_size
+            self._canvas.show_grid = s.show_grid
 
         # Auto-copy the raw capture to clipboard when the editor opens
         copy_to_clipboard(screenshot)
@@ -395,12 +434,14 @@ class EditorWindow(QWidget):
             self._save_tool_properties(self._current_tool_type)
         tool = self._tools.get(tool_type)
         if tool:
+            # Deselect any element so the panel switches to the new tool's defaults
+            if self._canvas.selected_element:
+                self._canvas.select_element(None)
             self._canvas.set_tool(tool)
             self._multi_toolbar.set_active_tool(tool_type)
             self._current_tool_type = tool_type
-            if not self._canvas.selected_element:
-                self._side_panel.update_for_tool(tool_type)
-                self._load_tool_properties(tool_type)
+            self._side_panel.update_for_tool(tool_type)
+            self._load_tool_properties(tool_type)
             # Show panel whenever the new tool has configurable properties
             from paparaz.ui.side_panel import TOOL_SECTIONS
             s = TOOL_SECTIONS.get(tool_type, {})
@@ -411,6 +452,8 @@ class EditorWindow(QWidget):
 
     def _on_element_selected(self, element):
         self._side_panel.on_element_selected(element)
+        if hasattr(self, '_layers_panel') and self._layers_panel.isVisible():
+            self._layers_panel.refresh()
 
     def _on_eyedropper_fg(self, color: str):
         """Eyedropper picked a foreground color — update side panel swatch + recent palette."""
@@ -517,8 +560,38 @@ class EditorWindow(QWidget):
             panel_x = editor_global.x() + self.width() + gap
             if panel_x + panel_w > screen_rect.right():
                 panel_x = max(screen_rect.left(), editor_global.x() - panel_w - gap)
-            panel_y = max(screen_rect.top(), min(editor_global.y(), screen_rect.bottom() - 300))
+            panel_h = self._side_panel.height()
+            panel_y = max(screen_rect.top(), min(editor_global.y(), screen_rect.bottom() - panel_h))
             self._side_panel.move(panel_x, panel_y)
+        # Apply default zoom on first show
+        if not getattr(self, '_initial_zoom_applied', False):
+            self._initial_zoom_applied = True
+            self._apply_default_zoom()
+
+    def _apply_default_zoom(self):
+        """Set zoom level based on user preference."""
+        if not self._settings_manager:
+            return
+        s = self._settings_manager.settings
+        mode = getattr(s, 'default_zoom', 'fit')
+        bg = self._canvas._background
+        if mode == "100":
+            self._canvas.set_zoom(1.0)
+        elif mode == "fill":
+            canvas_w = self._canvas.width()
+            canvas_h = self._canvas.height()
+            if bg.width() > 0 and bg.height() > 0:
+                z = max(canvas_w / bg.width(), canvas_h / bg.height())
+                self._canvas.set_zoom(z)
+        elif mode == "remember":
+            z = getattr(s, 'last_zoom_level', 1.0)
+            self._canvas.set_zoom(max(0.1, min(10.0, z)))
+        else:  # "fit" — default
+            canvas_w = self._canvas.width()
+            canvas_h = self._canvas.height()
+            if bg.width() > 0 and bg.height() > 0:
+                z = min(canvas_w / bg.width(), canvas_h / bg.height(), 1.0)
+                self._canvas.set_zoom(z)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -566,10 +639,22 @@ class EditorWindow(QWidget):
         # Apply background color to editor root
         bg = theme["bg1"]
         self.setStyleSheet(f"QWidget#editorRoot {{ background: {bg}; }}")
-        # Apply canvas background setting
-        if hasattr(self, '_canvas') and hasattr(self, '_settings_manager') and self._settings_manager:
-            canvas_bg = getattr(self._settings_manager.settings, 'canvas_background', 'dark')
-            self._canvas.set_canvas_background(canvas_bg)
+        # Apply settings-driven canvas/panel values
+        if hasattr(self, '_settings_manager') and self._settings_manager:
+            s = self._settings_manager.settings
+            if hasattr(self, '_canvas'):
+                self._canvas.set_canvas_background(getattr(s, 'canvas_background', 'dark'))
+                self._canvas.set_zoom_scroll_factor(getattr(s, 'zoom_scroll_factor', 1.1))
+                # Sync snap settings
+                self._canvas.snap_enabled = s.snap_enabled
+                self._canvas.snap_to_canvas = s.snap_to_canvas
+                self._canvas.snap_to_elements = s.snap_to_elements
+                self._canvas.snap_threshold = s.snap_threshold
+                self._canvas.snap_grid_enabled = s.snap_grid_enabled
+                self._canvas.snap_grid_size = s.snap_grid_size
+                self._canvas.show_grid = s.show_grid
+            if hasattr(self, '_side_panel'):
+                self._side_panel.set_auto_hide_ms(getattr(s, 'panel_auto_hide_ms', 3000))
 
     def _show_theme_presets(self):
         from paparaz.ui.theme_presets import ThemePresetPopup
@@ -770,6 +855,42 @@ class EditorWindow(QWidget):
             w, h = dlg.get_size()
             self._canvas.resize_canvas(w, h)
 
+    # --- Auto-save recovery ---
+
+    def _auto_save_recovery(self):
+        """Periodically save a recovery snapshot."""
+        from paparaz.core.recovery import save_snapshot
+        pix = self._canvas.render_to_pixmap()
+        save_snapshot(pix, id(self))
+
+    # --- Layers panel ---
+
+    def _toggle_layers_panel(self):
+        if self._layers_panel.isVisible():
+            self._layers_panel.hide()
+        else:
+            # Position to the left of the editor
+            editor_global = self.mapToGlobal(QPoint(0, 0))
+            panel_w = self._layers_panel.width()
+            gap = 10
+            screen_rect = QApplication.primaryScreen().availableGeometry()
+            panel_x = editor_global.x() - panel_w - gap
+            if panel_x < screen_rect.left():
+                panel_x = editor_global.x() + self.width() + gap
+            panel_y = max(screen_rect.top(), editor_global.y())
+            self._layers_panel.move(panel_x, panel_y)
+            self._layers_panel.resize(200, min(400, self.height()))
+            self._layers_panel.show()
+            self._layers_panel.refresh()
+
+    def _on_elements_changed(self):
+        if hasattr(self, '_layers_panel') and self._layers_panel.isVisible():
+            self._layers_panel.refresh()
+
+    def _on_layer_element_selected(self, elem):
+        if elem:
+            self._canvas.select_element(elem)
+
     # --- Shortcuts ---
 
     def _setup_shortcuts(self):
@@ -811,6 +932,7 @@ class EditorWindow(QWidget):
             "M": ToolType.MASQUERADE,   "S": ToolType.STAMP,
             "C": ToolType.CROP,         "F": ToolType.FILL,
             "Z": ToolType.SLICE,        "I": ToolType.EYEDROPPER,
+            "G": ToolType.MAGNIFIER,
         }
         for key, tt in tool_keys.items():
             sc(key, lambda _tt=tt: self._on_tool_selected(_tt))
@@ -908,14 +1030,17 @@ class EditorWindow(QWidget):
                 return
 
         path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
         ext = path.suffix.lower()
+
+        png_comp = getattr(s, 'png_compression', 6) if s else 6
 
         if ext == ".svg":
             save_svg(self._canvas._background, str(path), self._canvas.paint_annotations)
         elif ext in (".jpg", ".jpeg"):
             save_jpg(pix, str(path), jpg_q)
         else:
-            save_png(pix, str(path))
+            save_png(pix, str(path), compression=png_comp)
 
         # Increment persistent counter
         if s:
@@ -923,6 +1048,14 @@ class EditorWindow(QWidget):
             sm.add_recent(str(path))   # also saves settings
 
         self.file_saved.emit(str(path))
+
+        # Post-save actions
+        if s and getattr(s, 'auto_copy_on_save', False):
+            copy_to_clipboard(pix)
+        if s and getattr(s, 'open_after_save', False):
+            from PySide6.QtGui import QDesktopServices
+            from PySide6.QtCore import QUrl
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def _copy_to_clipboard(self):
         copy_to_clipboard(self._canvas.render_to_pixmap())
@@ -942,15 +1075,28 @@ class EditorWindow(QWidget):
         if getattr(self, "_border_cursor_on", False):
             QApplication.restoreOverrideCursor()
             self._border_cursor_on = False
+        # Stop recovery timer and clear recovery file
+        self._recovery_timer.stop()
+        from paparaz.core.recovery import clear_recovery
+        clear_recovery(id(self))
+        # Save window geometry and zoom level
+        if self._settings_manager:
+            g = self.geometry()
+            self._settings_manager.settings.window_geometry = f"{g.x()},{g.y()},{g.width()},{g.height()}"
+            if getattr(self._settings_manager.settings, 'default_zoom', 'fit') == 'remember':
+                self._settings_manager.settings.last_zoom_level = self._canvas._zoom
         # Persist current tool's properties on close
         self._settings_save_timer.stop()
         if not self._canvas.selected_element:
             self._save_tool_properties(self._current_tool_type)
         if self._settings_manager:
             self._settings_manager.save()
-        # Close the independent side panel (parent=None so it outlives us otherwise)
+        # Close the independent panels (parent=None so they outlive us otherwise)
         if hasattr(self, "_side_panel"):
             self._side_panel.hide()
             self._side_panel.deleteLater()
+        if hasattr(self, "_layers_panel"):
+            self._layers_panel.hide()
+            self._layers_panel.deleteLater()
         self.closed.emit()
         super().closeEvent(event)

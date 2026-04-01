@@ -42,8 +42,22 @@ class HighlightTool(BaseTool):
     # Default style values applied when no saved properties exist.
     # With Multiply blend mode the colour should be fully opaque — transparency
     # comes from the blend, not from alpha.  Classic highlighter yellow.
-    DEFAULT_COLOR = "#FFFF00"   # opaque yellow (Multiply blend makes it transparent-looking)
+    DEFAULT_COLOR = "#FFFF00"
     DEFAULT_WIDTH = 16
+
+    @property
+    def _effective_color(self):
+        sm = getattr(self.canvas, '_settings_manager', None)
+        if sm:
+            return getattr(sm.settings, 'highlight_default_color', self.DEFAULT_COLOR)
+        return self.DEFAULT_COLOR
+
+    @property
+    def _effective_width(self):
+        sm = getattr(self.canvas, '_settings_manager', None)
+        if sm:
+            return getattr(sm.settings, 'highlight_default_width', self.DEFAULT_WIDTH)
+        return self.DEFAULT_WIDTH
 
     def __init__(self, canvas):
         super().__init__(canvas)
@@ -53,9 +67,9 @@ class HighlightTool(BaseTool):
         # Seed canvas state with highlight defaults only if nothing saved
         if not getattr(self.canvas, "_highlight_defaults_set", False):
             if self.canvas._fg_color in ("#FF0000", "#ff0000"):  # untouched default
-                self.canvas._fg_color = self.DEFAULT_COLOR
+                self.canvas._fg_color = self._effective_color
             if self.canvas._line_width <= 3.0:
-                self.canvas._line_width = float(self.DEFAULT_WIDTH)
+                self.canvas._line_width = float(self._effective_width)
             self.canvas._highlight_defaults_set = True
 
     def on_press(self, pos: QPointF, event: QMouseEvent):

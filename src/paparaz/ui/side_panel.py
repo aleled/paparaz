@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QColorDialog, QFontComboBox,
     QScrollArea,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QPoint, QRect, QEvent
+from PySide6.QtCore import Qt, Signal, QTimer, QPoint, QRect, QEvent, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QFont, QPainter, QPixmap, QIcon, QPalette, QPen
 
 from paparaz.tools.base import ToolType
@@ -15,7 +15,10 @@ from paparaz.ui.color_palette import RecentColorsPalette
 from paparaz.core.elements import (
     AnnotationElement, TextElement, RectElement, EllipseElement,
     MaskElement, NumberElement, ElementType, HighlightElement,
+    PenElement, BrushElement, LineElement, ArrowElement,
+    ElementStyle, Shadow,
 )
+from PySide6.QtCore import QPointF, QRectF
 
 def _make_swatch_pixmap(color_str: str, size: int = 16) -> QPixmap:
     """Draw a checkerboard-backed color swatch so alpha is visible."""
@@ -51,8 +54,9 @@ QWidget#panelHeader {
 QLabel { color: #aaa; font-size: 11px; padding: 0; margin: 0; }
 QLabel#sectionTitle {
     color: #666; font-size: 10px; font-weight: bold;
-    padding: 5px 0 3px 0; text-transform: uppercase;
+    padding: 6px 0 4px 0; text-transform: uppercase;
     border-bottom: 1px solid #2a2a4a;
+    margin-top: 2px;
 }
 QLabel#editBanner {
     color: #fff; background: #740096; font-size: 11px; font-weight: bold;
@@ -188,7 +192,7 @@ class SidePanel(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setStyleSheet(PANEL_STYLE + combo_arrow_css())
         self.setFixedWidth(PANEL_WIDTH)
-        self.resize(PANEL_WIDTH, 500)
+        self.resize(PANEL_WIDTH, 400)
         # Floating overlay: must own its background paint explicitly
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
@@ -201,8 +205,15 @@ class SidePanel(QWidget):
         # Auto-hide timer for 'auto' mode
         self._auto_hide_timer = QTimer(self)
         self._auto_hide_timer.setSingleShot(True)
-        self._auto_hide_timer.setInterval(AUTO_HIDE_DELAY_MS)
+        self._auto_hide_timer.setInterval(AUTO_HIDE_DELAY_MS)  # may be overridden by set_auto_hide_ms()
         self._auto_hide_timer.timeout.connect(self._do_auto_hide)
+
+        # Fade animation for show/hide
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity")
+        self._fade_anim.setDuration(150)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self._fade_anim.finished.connect(self._on_fade_finished)
+        self._fade_target_visible = True
 
         self._fg_color = "#FF0000"
         self._bg_color = "#FFFFFF"
@@ -215,7 +226,13 @@ class SidePanel(QWidget):
         scroll = QScrollArea(self)
         self._scroll = scroll
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none;background:#1a1a2e;}")
+        scroll.setStyleSheet(
+            "QScrollArea{border:none;background:#1a1a2e;}"
+            "QScrollBar:vertical{background:#1a1a2e;width:6px;margin:0;}"
+            "QScrollBar::handle:vertical{background:#444;border-radius:3px;min-height:20px;}"
+            "QScrollBar::handle:vertical:hover{background:#666;}"
+            "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"
+        )
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # Make the scroll viewport opaque so it doesn't bleed through to the canvas
         vp = scroll.viewport()
@@ -224,24 +241,25 @@ class SidePanel(QWidget):
         vp.setPalette(vp_pal)
         vp.setAutoFillBackground(True)
         sw = QWidget()
+        sw.setMaximumWidth(PANEL_WIDTH)
         self._scroll_widget = sw
         sw_pal = sw.palette()
         sw_pal.setColor(QPalette.ColorRole.Window, QColor("#1a1a2e"))
         sw.setPalette(sw_pal)
         sw.setAutoFillBackground(True)
         self._layout = QVBoxLayout(sw)
-        self._layout.setContentsMargins(6, 3, 6, 6)
-        self._layout.setSpacing(4)
+        self._layout.setContentsMargins(8, 4, 8, 8)
+        self._layout.setSpacing(2)
         scroll.setWidget(sw)
 
         # ── Header bar ───────────────────────────────────────────────────
         self._header = QWidget()
         self._header.setObjectName("panelHeader")
-        self._header.setFixedHeight(40)
+        self._header.setFixedHeight(32)
         self._header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         hdr_layout = QHBoxLayout(self._header)
-        hdr_layout.setContentsMargins(8, 4, 8, 4)
-        hdr_layout.setSpacing(6)
+        hdr_layout.setContentsMargins(6, 2, 6, 2)
+        hdr_layout.setSpacing(4)
 
         # Drag grip indicator
         _drag_grip = QLabel("⠿")
@@ -261,7 +279,7 @@ class SidePanel(QWidget):
         # Pin toggle — when checked the panel stays open always
         _pin_style = (
             "QToolButton{background:#2a2a3e;border:1px solid #3a3a4e;"
-            "border-radius:5px;color:#888;font-size:11px;padding:2px 6px;min-width:40px;min-height:28px;}"
+            "border-radius:4px;color:#888;font-size:10px;padding:1px 5px;min-width:36px;min-height:24px;}"
             "QToolButton:hover{background:#3a3a4e;color:#ccc;}"
             "QToolButton:checked{background:#740096;border-color:#9e2ac0;color:#fff;}"
         )
@@ -280,8 +298,8 @@ class SidePanel(QWidget):
         # Close button
         _close_style = (
             "QToolButton{background:#2a2a3e;border:1px solid #3a3a4e;"
-            "border-radius:5px;color:#888;font-size:14px;padding:0;"
-            "min-width:28px;min-height:28px;max-width:28px;max-height:28px;}"
+            "border-radius:4px;color:#888;font-size:12px;padding:0;"
+            "min-width:24px;min-height:24px;max-width:24px;max-height:24px;}"
             "QToolButton:hover{background:#8b0000;border-color:#cc3333;color:#fff;}"
         )
         self._pin_close_btn = QToolButton()
@@ -293,12 +311,13 @@ class SidePanel(QWidget):
 
         # ── Element preview strip ─────────────────────────────────────────
         self._preview_label = QLabel()
-        self._preview_label.setFixedHeight(80)
+        self._preview_label.setFixedHeight(60)
         self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setStyleSheet(
             "background:#111827; border-bottom:1px solid #2a2a4a; color:#444; font-size:10px;"
         )
         self._preview_label.setText("No selection")
+        self._preview_label.hide()  # hidden until element is selected
         self._preview_element = None
 
         # Drag support: track mouse on header background to move the panel
@@ -499,6 +518,7 @@ class SidePanel(QWidget):
         self._text_stroke_width_widget = tsw_row
         self._text_stroke_width_widget.hide()
         self._text_stroke_check.toggled.connect(self._text_stroke_width_widget.setVisible)
+        self._text_stroke_check.toggled.connect(lambda: QTimer.singleShot(0, self._adjust_height))
         tl.addWidget(self._text_stroke_width_widget)
         self._text_widget = self._wrap_layout(tl)
         self._layout.addWidget(self._text_widget)
@@ -640,6 +660,7 @@ class SidePanel(QWidget):
         self._shadow_details_widget = self._wrap_layout(sd)
         self._shadow_details_widget.hide()
         self._shadow_check.toggled.connect(self._shadow_details_widget.setVisible)
+        self._shadow_check.toggled.connect(lambda: QTimer.singleShot(0, self._adjust_height))
         el.addWidget(self._shadow_details_widget)
 
         self._effects_widget = self._wrap_layout(el)
@@ -651,6 +672,33 @@ class SidePanel(QWidget):
         # Theme colors used by paintEvent (defaults match the hardcoded dark theme)
         self._theme_bg = QColor(26, 26, 46)
         self._theme_border = QColor(60, 60, 90)
+
+        # Live preview: refresh the preview strip whenever any property changes
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(30)  # debounce 30ms
+        self._preview_timer.timeout.connect(self._do_preview_refresh)
+        for sig in (
+            self.fg_color_changed, self.bg_color_changed,
+            self.line_width_changed, self.font_family_changed,
+            self.font_size_changed, self.opacity_changed,
+            self.cap_style_changed, self.join_style_changed,
+            self.dash_pattern_changed, self.filled_toggled,
+            self.shadow_toggled, self.shadow_color_changed,
+            self.shadow_offset_x_changed, self.shadow_offset_y_changed,
+            self.shadow_blur_x_changed, self.shadow_blur_y_changed,
+            self.rotation_changed,
+            self.pixel_size_changed, self.fill_tolerance_changed,
+            self.number_size_changed, self.number_text_color_changed,
+            self.stamp_size_changed,
+            self.text_bold_changed, self.text_italic_changed,
+            self.text_underline_changed, self.text_strikethrough_changed,
+            self.text_alignment_changed, self.text_direction_changed,
+            self.text_bg_enabled_changed, self.text_bg_color_changed,
+            self.text_stroke_enabled_changed, self.text_stroke_color_changed,
+            self.text_stroke_width_changed,
+        ):
+            sig.connect(lambda *_, s=sig: self._schedule_preview_refresh())
 
     def paintEvent(self, event):
         """Solid background with right-side separator (for docked layout)."""
@@ -824,7 +872,7 @@ class SidePanel(QWidget):
         row.setSpacing(3)
         row.setContentsMargins(0, 0, 0, 0)
         lbl = QLabel(label)
-        lbl.setFixedWidth(28)
+        lbl.setFixedWidth(36)
         row.addWidget(lbl)
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(lo, hi)
@@ -832,7 +880,7 @@ class SidePanel(QWidget):
         row.addWidget(slider, 1)
         val_lbl = QLabel(f"{default}{suffix}")
         val_lbl.setObjectName("valLabel")
-        val_lbl.setFixedWidth(30)
+        val_lbl.setFixedWidth(34)
         val_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(val_lbl)
         slider.valueChanged.connect(lambda v: val_lbl.setText(f"{v}{suffix}"))
@@ -878,6 +926,7 @@ class SidePanel(QWidget):
 
     def _wrap_layout(self, layout) -> QWidget:
         w = QWidget()
+        layout.setContentsMargins(0, 0, 0, 0)
         w.setLayout(layout)
         return w
 
@@ -885,6 +934,7 @@ class SidePanel(QWidget):
         w = QWidget()
         l = QVBoxLayout(w)
         l.setContentsMargins(0, 0, 0, 0)
+        l.setSpacing(0)
         l.addWidget(widget)
         return w
 
@@ -964,6 +1014,11 @@ class SidePanel(QWidget):
         self._stamp_widget.setVisible(s.get("stamp", False))
         self._effects_title.setVisible(s.get("effects", False))
         self._effects_widget.setVisible(s.get("effects", False))
+        # Show tool sample preview when no element is selected
+        if self._preview_element is None:
+            QTimer.singleShot(0, self._refresh_tool_preview)
+        else:
+            QTimer.singleShot(0, self._adjust_height)
 
     # --- Element property loading ---
 
@@ -975,6 +1030,7 @@ class SidePanel(QWidget):
                 return
 
             self._edit_banner.show()
+            self._preview_label.show()
             s = element.style
 
             self._fg_color = s.foreground_color
@@ -1067,7 +1123,7 @@ class SidePanel(QWidget):
 
     def clear_element_properties(self):
         self._edit_banner.hide()
-        self._refresh_preview(None)
+        self._preview_element = None
         self._title_label.setText("Properties")
         self.update_for_tool(self._current_tool)
 
@@ -1109,15 +1165,15 @@ class SidePanel(QWidget):
         # Re-skin header buttons and title
         self._pin_btn.setStyleSheet(
             f"QToolButton{{background:{bg2};border:1px solid {brd};"
-            f"border-radius:5px;color:{fg_dim};font-size:11px;padding:2px 6px;"
-            f"min-width:40px;min-height:28px;}}"
+            f"border-radius:4px;color:{fg_dim};font-size:10px;padding:1px 5px;"
+            f"min-width:36px;min-height:24px;}}"
             f"QToolButton:hover{{background:{bg3};color:{fg};}}"
             f"QToolButton:checked{{background:{acc};border-color:{acc};color:{fg_br};}}"
         )
         self._pin_close_btn.setStyleSheet(
             f"QToolButton{{background:{bg2};border:1px solid {brd};"
-            f"border-radius:5px;color:{fg};font-size:14px;padding:0;"
-            f"min-width:28px;min-height:28px;max-width:28px;max-height:28px;}}"
+            f"border-radius:4px;color:{fg};font-size:12px;padding:0;"
+            f"min-width:24px;min-height:24px;max-width:24px;max-height:24px;}}"
             f"QToolButton:hover{{background:#8b0000;border-color:#cc3333;color:{fg_br};}}"
         )
         self._title_label.setStyleSheet(
@@ -1129,7 +1185,13 @@ class SidePanel(QWidget):
 
         # Update scroll area + content widget palette so they match
         bg_color = QColor(bg1)
-        self._scroll.setStyleSheet(f"QScrollArea{{border:none;background:{bg1};}}")
+        self._scroll.setStyleSheet(
+            f"QScrollArea{{border:none;background:{bg1};}}"
+            f"QScrollBar:vertical{{background:{bg1};width:6px;margin:0;}}"
+            f"QScrollBar::handle:vertical{{background:{brd};border-radius:3px;min-height:20px;}}"
+            f"QScrollBar::handle:vertical:hover{{background:{fg_dim};}}"
+            f"QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{{height:0;}}"
+        )
         for w in (self._scroll.viewport(), self._scroll_widget):
             pal = w.palette()
             pal.setColor(QPalette.ColorRole.Window, bg_color)
@@ -1147,6 +1209,10 @@ class SidePanel(QWidget):
         return self._recent_palette.get_colors()
 
     # ── Mode ─────────────────────────────────────────────────────────────────
+
+    def set_auto_hide_ms(self, ms: int):
+        """Override the auto-hide delay (default 3000 ms)."""
+        self._auto_hide_timer.setInterval(max(500, ms))
 
     def set_mode(self, mode: str):
         """Set panel mode: 'auto', 'pinned', or 'hidden'."""
@@ -1186,11 +1252,125 @@ class SidePanel(QWidget):
         """Hide button clicked — switch to hidden mode."""
         self.set_mode("hidden")
 
+    def _schedule_preview_refresh(self):
+        """Debounced preview refresh — called when any property signal fires."""
+        self._preview_timer.start()
+
+    def _do_preview_refresh(self):
+        """Timer callback: re-render the current preview element or tool sample."""
+        if self._preview_element is not None:
+            self._refresh_preview(self._preview_element)
+        else:
+            self._refresh_tool_preview()
+
+    def _current_style(self) -> ElementStyle:
+        """Build an ElementStyle from the panel's current widget values."""
+        return ElementStyle(
+            foreground_color=self._fg_color,
+            background_color=self._bg_color,
+            line_width=float(self._width_slider.value()),
+            opacity=self._opacity_slider.value() / 100.0,
+            font_family=self._font_combo.currentText(),
+            font_size=self._font_size_slider.value(),
+            shadow=Shadow(
+                enabled=self._shadow_check.isChecked(),
+                offset_x=float(self._shadow_ox_slider.value()),
+                offset_y=float(self._shadow_oy_slider.value()),
+                blur_x=float(self._shadow_blur_x_slider.value()),
+                blur_y=float(self._shadow_blur_y_slider.value()),
+                color=self._shadow_color,
+            ),
+            cap_style=self._cap_combo.currentData() or "round",
+            join_style=self._join_combo.currentData() or "round",
+            dash_pattern=self._dash_combo.currentData() or "solid",
+        )
+
+    def _build_tool_sample(self) -> AnnotationElement | None:
+        """Create a small sample element representing the current tool + settings."""
+        t = self._current_tool
+        style = self._current_style()
+
+        if t in (ToolType.PEN, ToolType.BRUSH, ToolType.HIGHLIGHT):
+            if t == ToolType.HIGHLIGHT:
+                elem = HighlightElement(style)
+            elif t == ToolType.BRUSH:
+                elem = BrushElement(style)
+            else:
+                elem = PenElement(style)
+            # Draw a gentle wave
+            for i in range(30):
+                x = 10 + i * 3
+                y = 30 + (10 if i % 6 < 3 else -10) * (0.5 if i < 5 or i > 25 else 1)
+                elem.add_point(QPointF(x, y))
+            return elem
+
+        if t in (ToolType.LINE, ToolType.ARROW):
+            elem = (ArrowElement if t == ToolType.ARROW else LineElement)(
+                QPointF(10, 40), QPointF(100, 15), style)
+            return elem
+
+        if t == ToolType.RECTANGLE:
+            elem = RectElement(QRectF(10, 8, 90, 40), style)
+            elem.filled = self._filled_check.isChecked()
+            return elem
+
+        if t == ToolType.ELLIPSE:
+            elem = EllipseElement(QRectF(10, 8, 90, 40), style)
+            elem.filled = self._filled_check.isChecked()
+            return elem
+
+        if t == ToolType.TEXT:
+            elem = TextElement(QPointF(10, 10), "Sample", style)
+            elem.bold = self._bold_btn.isChecked()
+            elem.italic = self._italic_btn.isChecked()
+            elem.underline = self._underline_btn.isChecked()
+            return elem
+
+        if t == ToolType.NUMBERING:
+            elem = NumberElement(QPointF(55, 28), size=float(self._num_size_slider.value()),
+                                text_color=self._num_text_color, style=style)
+            return elem
+
+        return None
+
+    def _refresh_tool_preview(self):
+        """Generate and render a sample element for the current tool."""
+        sample = self._build_tool_sample()
+        if sample is None:
+            self._preview_label.hide()
+            QTimer.singleShot(0, self._adjust_height)
+            return
+        self._preview_label.show()
+        # Render the sample without storing it as _preview_element
+        pw = max(self.width() - 4, 100)
+        ph = 56
+        pix = QPixmap(pw, ph)
+        pix.fill(QColor("#111827"))
+        try:
+            br = sample.bounding_rect()
+            if br.width() >= 1 and br.height() >= 1:
+                margin = 12
+                scale = min((pw - margin * 2) / br.width(),
+                            (ph - margin * 2) / br.height(), 4.0)
+                p = QPainter(pix)
+                p.setRenderHint(QPainter.RenderHint.Antialiasing)
+                tx = (pw - br.width() * scale) / 2 - br.x() * scale
+                ty = (ph - br.height() * scale) / 2 - br.y() * scale
+                p.translate(tx, ty)
+                p.scale(scale, scale)
+                sample.paint(p)
+                p.end()
+        except Exception:
+            pass
+        self._preview_label.setPixmap(pix)
+        self._preview_label.setText("")
+        QTimer.singleShot(0, self._adjust_height)
+
     def _refresh_preview(self, element=None):
         """Render a scaled thumbnail of *element* into the preview strip."""
         self._preview_element = element
         pw = max(self.width() - 4, 100)
-        ph = 76  # preview_label height minus border
+        ph = 56  # preview_label height minus border
         pix = QPixmap(pw, ph)
         pix.fill(QColor("#111827"))
         if element is None:
@@ -1219,6 +1399,56 @@ class SidePanel(QWidget):
             pass
         self._preview_label.setPixmap(pix)
         self._preview_label.setText("")
+
+    def _adjust_height(self):
+        """Resize panel height to fit visible content, capped by available screen height."""
+        # Header + preview + scroll content
+        header_h = self._header.sizeHint().height()
+        preview_h = self._preview_label.height() if self._preview_label.isVisible() else 0
+        content_h = self._scroll_widget.sizeHint().height()
+        ideal = header_h + preview_h + content_h + 12  # 12 = margins
+        # Cap to 85% of screen height
+        screen = None
+        try:
+            from PySide6.QtWidgets import QApplication
+            scr = QApplication.screenAt(self.pos())
+            if scr:
+                screen = scr.availableGeometry()
+            else:
+                screen = QApplication.primaryScreen().availableGeometry()
+        except Exception:
+            pass
+        max_h = int(screen.height() * 0.85) if screen else 900
+        min_h = 200
+        new_h = max(min_h, min(ideal, max_h))
+        self.resize(self.width(), new_h)
+
+    def show(self):
+        """Fade in the panel."""
+        if self.isVisible() and self._fade_target_visible:
+            return
+        self._fade_target_visible = True
+        self._fade_anim.stop()
+        self.setWindowOpacity(0.0)
+        super().show()
+        self._fade_anim.setStartValue(0.0)
+        self._fade_anim.setEndValue(1.0)
+        self._fade_anim.start()
+
+    def hide(self):
+        """Fade out the panel."""
+        if not self.isVisible():
+            return
+        self._fade_target_visible = False
+        self._fade_anim.stop()
+        self._fade_anim.setStartValue(self.windowOpacity())
+        self._fade_anim.setEndValue(0.0)
+        self._fade_anim.start()
+
+    def _on_fade_finished(self):
+        if not self._fade_target_visible:
+            super().hide()
+            self.setWindowOpacity(1.0)
 
     def _do_auto_hide(self):
         if self._mode == "auto":

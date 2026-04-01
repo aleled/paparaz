@@ -163,6 +163,12 @@ ICONS_SVG = {
             d="M2 6h14a2 2 0 012 2v14"/>
     </svg>""",
 
+    "magnifier": """<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10" cy="10" r="6.5" fill="none" stroke="#80CBC4" stroke-width="2"/>
+      <line x1="15" y1="15" x2="21" y2="21" stroke="#80CBC4" stroke-width="2.5" stroke-linecap="round"/>
+      <text x="7" y="13" fill="#80CBC4" font-size="8" font-weight="bold" font-family="sans-serif">2×</text>
+    </svg>""",
+
     # ── ACTION ICONS ─────────────────────────────────────────────────────────
 
     "undo": """<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -215,6 +221,15 @@ ICONS_SVG = {
             d="M21 15v5h-5M21 21l-5.5-5.5"/>
       <rect x="8.5" y="8.5" width="7" height="7" rx="1" fill="none"
             stroke="#4DD0E1" stroke-width="1.5" stroke-dasharray="2.5 1.5"/>
+    </svg>""",
+
+    "layers": """<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path fill="none" stroke="#B39DDB" stroke-width="1.8" stroke-linejoin="round"
+            d="M12 2L2 7l10 5 10-5-10-5z"/>
+      <path fill="none" stroke="#9575CD" stroke-width="1.8" stroke-linejoin="round"
+            d="M2 12l10 5 10-5"/>
+      <path fill="none" stroke="#7E57C2" stroke-width="1.8" stroke-linejoin="round"
+            d="M2 17l10 5 10-5"/>
     </svg>""",
 
     "palette": """<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

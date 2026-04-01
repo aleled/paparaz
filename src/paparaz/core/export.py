@@ -7,7 +7,13 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtSvg import QSvgGenerator
 
 
-def save_png(pixmap: QPixmap, path: str) -> bool:
+def save_png(pixmap: QPixmap, path: str, compression: int = -1) -> bool:
+    """Save as PNG. compression: 0=fast/large .. 9=slow/small, -1=Qt default."""
+    if 0 <= compression <= 9:
+        # Qt quality for PNG: 0=max compression .. 100=no compression
+        # Map our 0-9 to Qt's scale: compression 9 → quality 0, compression 0 → quality 100
+        qt_quality = max(0, 100 - compression * 11)
+        return pixmap.save(path, "PNG", qt_quality)
     return pixmap.save(path, "PNG")
 
 

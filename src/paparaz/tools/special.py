@@ -6,7 +6,8 @@ from PySide6.QtGui import QMouseEvent, QKeyEvent, QPainter, QColor, QPen, QFont,
 from PySide6.QtWidgets import QApplication
 from paparaz.tools.base import BaseTool, ToolType
 from paparaz.core.elements import (
-    TextElement, NumberElement, MaskElement, StampElement, ImageElement, ElementStyle,
+    TextElement, NumberElement, MaskElement, StampElement, ImageElement,
+    MagnifierElement, ElementStyle,
 )
 
 
@@ -1458,3 +1459,58 @@ class EyedropperTool(BaseTool):
         # Signal the editor to switch tool via canvas attribute
         if hasattr(self.canvas, '_eyedropper_done'):
             self.canvas._eyedropper_done.emit(self._prev_tool_type)
+
+
+class MagnifierTool(BaseTool):
+    """Drag to select a source area, then place a magnified callout."""
+
+    tool_type = ToolType.MAGNIFIER
+    cursor = Qt.CursorShape.CrossCursor
+
+    def __init__(self, canvas):
+        super().__init__(canvas)
+        self._start: QPointF | None = None
+        self._current: MagnifierElement | None = None
+        self.zoom = 2.0
+
+    def on_press(self, pos: QPointF, event: QMouseEvent):
+        self._start = pos
+        style = self.canvas.current_style()
+        source = QRectF(pos, pos)
+        # Display rect offset below/right of source
+        display = QRectF(pos.x() + 20, pos.y() + 20, 1, 1)
+        self._current = MagnifierElement(
+            source, display, self.zoom, style,
+            background=self.canvas._background,
+        )
+
+    def on_move(self, pos: QPointF, event: QMouseEvent):
+        if self._current and self._start:
+            source = QRectF(self._start, pos).normalized()
+            # Display rect: magnified size, offset below-right
+            dw = source.width() * self.zoom
+            dh = source.height() * self.zoom
+            display = QRectF(
+                source.right() + 20, source.bottom() + 20, dw, dh
+            )
+            self._current.source_rect = source
+            self._current.display_rect = display
+            self.canvas.set_preview(self._current)
+
+    def on_release(self, pos: QPointF, event: QMouseEvent):
+        if self._current:
+            source = self._current.source_rect.normalized()
+            if source.width() > 5 and source.height() > 5:
+                self.canvas.add_element(self._current)
+        self._current = None
+        self._start = None
+        self.canvas.set_preview(None)
+
+    def paint_hover(self, painter: QPainter):
+        if not self._hover_pos:
+            return
+        # Crosshair
+        p = self._hover_pos
+        painter.setPen(QPen(QColor("#740096"), 1, Qt.PenStyle.DashLine))
+        painter.drawLine(p.x() - 15, p.y(), p.x() + 15, p.y())
+        painter.drawLine(p.x(), p.y() - 15, p.x(), p.y() + 15)

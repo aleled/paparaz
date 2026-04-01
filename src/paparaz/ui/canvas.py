@@ -15,6 +15,7 @@ from paparaz.core.elements import (
 )
 from paparaz.core.history import HistoryManager, Command
 from paparaz.tools.base import BaseTool, ToolType
+from paparaz.tools.select import SelectTool, _HANDLE_CURSORS
 
 
 def _clone_element(elem: AnnotationElement) -> AnnotationElement:
@@ -42,6 +43,7 @@ class AnnotationCanvas(QWidget):
 
     tool_changed = Signal(ToolType)
     element_selected = Signal(object)  # AnnotationElement or None
+    elements_changed = Signal()        # elements list was modified (add/remove/reorder)
     zoom_changed = Signal(float)
     request_text_edit = Signal(object)  # TextElement to re-edit
     _eyedropper_done = Signal(object)   # ToolType — return-to-prev-tool signal
@@ -72,12 +74,25 @@ class AnnotationCanvas(QWidget):
         self._filled = False
 
         # Zoom/pan
+        self._zoom_scroll_factor = 1.1
         self._zoom = 1.0
         self._pan_offset = QPointF(0, 0)
         self._panning = False
         self._pan_start = QPointF()
 
         self._element_clipboard: Optional[AnnotationElement] = None
+        # Snap configuration (set by editor from settings)
+        self.snap_enabled: bool = True
+        self.snap_to_canvas: bool = True
+        self.snap_to_elements: bool = True
+        self.snap_threshold: int = 8
+        self.snap_grid_enabled: bool = False
+        self.snap_grid_size: int = 20
+        self.show_grid: bool = False
+        self._snap_guides: list = []   # current snap guide lines to render
+        # Handle-intercept: lets any tool resize/rotate the selected element
+        self._handle_select = SelectTool(self)
+        self._handle_active = False  # True while a handle drag is in progress
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAcceptDrops(True)
@@ -149,6 +164,10 @@ class AnnotationCanvas(QWidget):
         """Set the canvas surround color. 'dark'=default, 'checkerboard', 'system', or a hex color."""
         self._canvas_bg = bg
         self.update()
+
+    def set_zoom_scroll_factor(self, factor: float):
+        """Set the scroll wheel zoom multiplier (1.05 – 1.3)."""
+        self._zoom_scroll_factor = max(1.05, min(1.3, factor))
 
     def _paint_canvas_background(self, painter: QPainter):
         """Fill the area behind/around the screenshot with the configured background."""
@@ -333,7 +352,6 @@ class AnnotationCanvas(QWidget):
             )
             elem = ImageElement(pixmap, center)
             self.add_element(elem)
-            self.select_element(elem)
             return True
 
         mime = clipboard.mimeData()
@@ -348,7 +366,6 @@ class AnnotationCanvas(QWidget):
                     )
                     elem = ImageElement(pix, center)
                     self.add_element(elem)
-                    self.select_element(elem)
                     return True
 
         if mime and mime.hasText():
@@ -360,7 +377,6 @@ class AnnotationCanvas(QWidget):
                 )
                 elem = TextElement(pos, text, self.current_style())
                 self.add_element(elem)
-                self.select_element(elem)
                 return True
 
         return False
@@ -379,20 +395,28 @@ class AnnotationCanvas(QWidget):
 
     # --- Element management ---
 
-    def add_element(self, element: AnnotationElement):
+    def add_element(self, element: AnnotationElement, auto_select: bool = True):
         elem = element
 
         def do():
             self.elements.append(elem)
             self.update()
+            self.elements_changed.emit()
 
         def undo():
             if elem in self.elements:
                 self.elements.remove(elem)
+            if self.selected_element == elem:
+                self.selected_element = None
+                self.element_selected.emit(None)
             self.update()
+            self.elements_changed.emit()
 
         cmd = Command(f"Add {elem.element_type.name}", do, undo)
         self.history.execute(cmd)
+        # Auto-select the just-drawn element so user can tweak properties
+        if auto_select:
+            self.select_element(elem)
 
     def delete_element(self, element: AnnotationElement):
         elem = element
@@ -407,10 +431,12 @@ class AnnotationCanvas(QWidget):
                 self.selected_element = None
                 self.element_selected.emit(None)
             self.update()
+            self.elements_changed.emit()
 
         def undo():
             self.elements.insert(min(index, len(self.elements)), elem)
             self.update()
+            self.elements_changed.emit()
 
         cmd = Command(f"Delete {elem.element_type.name}", do, undo)
         self.history.execute(cmd)
@@ -450,11 +476,13 @@ class AnnotationCanvas(QWidget):
                     self.elements.remove(elem)
                     self.elements.append(elem)
                 self.update()
+                self.elements_changed.emit()
             def undo():
                 if elem in self.elements:
                     self.elements.remove(elem)
                     self.elements.insert(min(old_idx, len(self.elements)), elem)
                 self.update()
+                self.elements_changed.emit()
             self.history.execute(Command("Bring to front", do, undo))
 
     def send_to_back(self):
@@ -466,11 +494,13 @@ class AnnotationCanvas(QWidget):
                     self.elements.remove(elem)
                     self.elements.insert(0, elem)
                 self.update()
+                self.elements_changed.emit()
             def undo():
                 if elem in self.elements:
                     self.elements.remove(elem)
                     self.elements.insert(min(old_idx, len(self.elements)), elem)
                 self.update()
+                self.elements_changed.emit()
             self.history.execute(Command("Send to back", do, undo))
 
     def move_up(self):
@@ -565,10 +595,18 @@ class AnnotationCanvas(QWidget):
         if self._tool:
             self._tool.paint_hover(painter)
 
+        # Grid overlay
+        if self.show_grid and self.snap_grid_size > 0:
+            self._paint_grid(painter)
+
         # Selection handles (always on top)
         for elem in self.elements:
             if elem.selected:
                 elem.paint_selection(painter)
+
+        # Snap guide lines (on top of everything)
+        if self._snap_guides:
+            self._paint_snap_guides(painter)
 
         painter.end()
 
@@ -594,6 +632,43 @@ class AnnotationCanvas(QWidget):
         painter.drawPixmap(r.x(), r.y(), pixelated)
         painter.setOpacity(1.0)
 
+    def _paint_grid(self, painter: QPainter):
+        """Draw a subtle grid overlay."""
+        gs = self.snap_grid_size
+        if gs < 4:
+            return
+        pen = QPen(QColor(255, 255, 255, 25), 0)  # thin, semi-transparent
+        painter.setPen(pen)
+        w = self._background.width()
+        h = self._background.height()
+        x = gs
+        while x < w:
+            painter.drawLine(int(x), 0, int(x), h)
+            x += gs
+        y = gs
+        while y < h:
+            painter.drawLine(0, int(y), w, int(y))
+            y += gs
+
+    def _paint_snap_guides(self, painter: QPainter):
+        """Draw snap alignment guide lines."""
+        pen = QPen(QColor(0, 200, 255, 180), 0)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        for g in self._snap_guides:
+            if g.orientation == "v":
+                painter.drawLine(int(g.value), int(g.start), int(g.value), int(g.end))
+            else:
+                painter.drawLine(int(g.start), int(g.value), int(g.end), int(g.value))
+
+    def canvas_rect(self) -> QRectF:
+        """Return the background image rect (canvas coordinate space)."""
+        return QRectF(0, 0, self._background.width(), self._background.height())
+
+    def _is_handle_tool(self) -> bool:
+        """True when the active tool is NOT select (select handles its own handles)."""
+        return bool(self._tool and self._tool.tool_type != ToolType.SELECT)
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.MiddleButton:
             self._panning = True
@@ -602,6 +677,15 @@ class AnnotationCanvas(QWidget):
             return
         if self._tool:
             pos = self._screen_to_canvas(event.position())
+            # Intercept: if a non-select tool is active but cursor is on a handle,
+            # delegate resize/rotate to the hidden SelectTool.
+            if (self._is_handle_tool() and self.selected_element
+                    and event.button() == Qt.MouseButton.LeftButton):
+                handle = self.selected_element.handle_at(pos)
+                if handle is not None:
+                    self._handle_active = True
+                    self._handle_select.on_press(pos, event)
+                    return
             self._tool.on_press(pos, event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
@@ -617,18 +701,40 @@ class AnnotationCanvas(QWidget):
             self._pan_start = event.position()
             self.update()
             return
+        if self._handle_active:
+            pos = self._screen_to_canvas(event.position())
+            self._handle_select.on_move(pos, event)
+            return
         if self._tool:
             pos = self._screen_to_canvas(event.position())
             # If buttons pressed: tool drag. Otherwise: hover.
             if event.buttons() != Qt.MouseButton.NoButton:
                 self._tool.on_move(pos, event)
             else:
+                # Show handle cursors even when a non-select tool is active
+                if self._is_handle_tool() and self.selected_element:
+                    handle = self.selected_element.handle_at(pos)
+                    if handle is not None:
+                        self.setCursor(_HANDLE_CURSORS.get(
+                            handle, Qt.CursorShape.ArrowCursor))
+                        return
+                    # Restore tool cursor when leaving handles
+                    if self.cursor().shape() != self._tool.cursor:
+                        self.setCursor(self._tool.cursor)
                 self._tool.on_hover(pos)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.MiddleButton:
             self._panning = False
             self.setCursor(self._tool.cursor if self._tool else Qt.CursorShape.ArrowCursor)
+            return
+        if self._handle_active:
+            pos = self._screen_to_canvas(event.position())
+            self._handle_select.on_release(pos, event)
+            self._handle_active = False
+            # Restore the active tool's cursor
+            if self._tool:
+                self.setCursor(self._tool.cursor)
             return
         if self._tool:
             pos = self._screen_to_canvas(event.position())
@@ -723,7 +829,6 @@ class AnnotationCanvas(QWidget):
             new = _clone_element(clicked_elem)
             new.move_by(20, 20)
             self.add_element(new)
-            self.select_element(new)
         elif del_act and action == del_act:
             self.delete_element(clicked_elem)
         elif paste_elem_act and action == paste_elem_act:
@@ -739,7 +844,7 @@ class AnnotationCanvas(QWidget):
     def wheelEvent(self, event: QWheelEvent):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
-            factor = 1.1 if delta > 0 else 0.9
+            factor = self._zoom_scroll_factor if delta > 0 else (1.0 / self._zoom_scroll_factor)
             self.set_zoom(self._zoom * factor)
             event.accept()
         else:
@@ -816,7 +921,6 @@ class AnnotationCanvas(QWidget):
         new = _clone_element(self._element_clipboard)
         new.move_by(20, 20)
         self.add_element(new)
-        self.select_element(new)
 
     def crop_canvas(self, rect: QRectF):
         """Crop the canvas to given rect (in canvas coordinates). Undoable."""

@@ -74,6 +74,7 @@ class ElementType(Enum):
     MASK = auto()
     IMAGE = auto()
     STAMP = auto()
+    MAGNIFIER = auto()
 
 
 # Line cap/join constants for UI
@@ -1296,4 +1297,95 @@ class StampElement(AnnotationElement):
         d = super().to_dict()
         d["stamp_id"] = self.stamp_id
         d["rect"] = (self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
+        return d
+
+
+class MagnifierElement(AnnotationElement):
+    """Zoom loupe callout — shows a magnified view of a source region."""
+
+    def __init__(self, source_rect: QRectF, display_rect: QRectF,
+                 zoom: float = 2.0, style: Optional[ElementStyle] = None,
+                 background: Optional[QPixmap] = None):
+        super().__init__(ElementType.MAGNIFIER, style)
+        self.source_rect = source_rect      # area to zoom into (in canvas coords)
+        self.display_rect = display_rect    # where the magnified view is shown
+        self.zoom = zoom
+        self._background = background       # reference to canvas background pixmap
+
+    def bounding_rect(self) -> QRectF:
+        return self.display_rect.normalized()
+
+    def contains_point(self, point: QPointF) -> bool:
+        if self.rotation:
+            point = _rotate_point(point, self.display_rect.normalized().center(), -self.rotation)
+        return self.display_rect.normalized().contains(point)
+
+    def paint(self, painter: QPainter):
+        if self.rotation:
+            painter.save()
+            _apply_rotation(painter, self.display_rect.normalized().center(), self.rotation)
+            self._paint_magnifier(painter)
+            painter.restore()
+        else:
+            self._paint_magnifier(painter)
+
+    def _paint_magnifier(self, painter: QPainter):
+        r = self.display_rect.normalized()
+        src = self.source_rect.normalized()
+
+        # Draw shadow
+        if self.style.shadow.enabled:
+            painter.save()
+            shadow_r = r.translated(self.style.shadow.offset_x, self.style.shadow.offset_y)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(0, 0, 0, 80))
+            painter.drawRect(shadow_r)
+            painter.restore()
+
+        # Draw magnified content from background
+        if self._background and not self._background.isNull():
+            bg = self._background
+            src_px = QRectF(
+                max(0, src.x()), max(0, src.y()),
+                min(src.width(), bg.width() - src.x()),
+                min(src.height(), bg.height() - src.y()),
+            )
+            if src_px.width() > 0 and src_px.height() > 0:
+                cropped = bg.copy(int(src_px.x()), int(src_px.y()),
+                                  int(src_px.width()), int(src_px.height()))
+                painter.drawPixmap(r, cropped, QRectF(0, 0, cropped.width(), cropped.height()))
+
+        # Draw border
+        border_color = QColor(self.style.foreground_color) if self.style else QColor("#740096")
+        pen = QPen(border_color, max(2, self.style.line_width if self.style else 2))
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(r)
+
+        # Draw zoom label
+        painter.setPen(QPen(border_color))
+        font = painter.font()
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+        label = f"{self.zoom:.0f}×"
+        painter.drawText(r.adjusted(4, 2, 0, 0), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft, label)
+
+        # Draw source indicator (thin dashed rect around source area)
+        painter.setPen(QPen(border_color, 1, Qt.PenStyle.DashLine))
+        painter.drawRect(src)
+
+    def move_by(self, dx: float, dy: float):
+        self.display_rect = QRectF(
+            self.display_rect.x() + dx, self.display_rect.y() + dy,
+            self.display_rect.width(), self.display_rect.height(),
+        )
+
+    def to_dict(self) -> dict:
+        d = super().to_dict()
+        d["source_rect"] = (self.source_rect.x(), self.source_rect.y(),
+                            self.source_rect.width(), self.source_rect.height())
+        d["display_rect"] = (self.display_rect.x(), self.display_rect.y(),
+                             self.display_rect.width(), self.display_rect.height())
+        d["zoom"] = self.zoom
         return d

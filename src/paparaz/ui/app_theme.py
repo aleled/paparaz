@@ -79,6 +79,20 @@ APP_THEMES: dict[str, dict] = {
         "border":    "#443020",
         "border2":   "#342818",
     },
+    "light": {
+        "name": "Light",
+        "bg1":  "#f0f0f5",
+        "bg2":  "#e0e0e8",
+        "bg3":  "#d0d0d8",
+        "accent":         "#740096",
+        "accent_hover":   "#9e2ac0",
+        "accent_pressed": "#5a0074",
+        "fg":        "#333333",
+        "fg_bright": "#111111",
+        "fg_dim":    "#888888",
+        "border":    "#c0c0cc",
+        "border2":   "#d0d0d8",
+    },
 }
 
 

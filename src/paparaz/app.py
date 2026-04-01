@@ -1,8 +1,8 @@
 """Main application controller - orchestrates tray, hotkey, capture, editor, pin, settings."""
 
 from PySide6.QtWidgets import QApplication, QFileDialog
-from PySide6.QtCore import QObject, QPoint, QRect, QTimer
-from PySide6.QtGui import QPixmap, QCursor
+from PySide6.QtCore import QObject, QPoint, QRect, QTimer, Qt
+from PySide6.QtGui import QPixmap, QCursor, QPainter
 
 from paparaz.core.capture import capture_monitor, capture_region
 from paparaz.core.settings import SettingsManager
@@ -33,6 +33,16 @@ class PapaRazApp(QObject):
         self._capture_hk_id = self._hotkey_listener.register(
             self._settings.settings.hotkeys.capture
         )
+        self._fullscreen_hk_id = self._hotkey_listener.register(
+            self._settings.settings.hotkeys.capture_fullscreen
+        )
+        self._window_hk_id = self._hotkey_listener.register(
+            self._settings.settings.hotkeys.capture_window
+        )
+        self._repeat_hk_id = self._hotkey_listener.register(
+            self._settings.settings.hotkeys.capture_repeat
+        )
+        self._last_capture_rect = None  # for repeat-last-region
 
         self._tray.capture_requested.connect(self._start_capture)
         self._tray.delay_capture_requested.connect(self._delay_capture)
@@ -51,6 +61,31 @@ class PapaRazApp(QObject):
         self._hotkey_listener.start()
         # Check for updates silently after 3 s so UI is fully ready first
         QTimer.singleShot(3000, self._check_updates)
+        # Check for crash recovery files
+        if getattr(self._settings.settings, 'crash_recovery', True):
+            QTimer.singleShot(500, self._check_recovery)
+
+    def _check_recovery(self):
+        """Check for crash recovery files and offer to restore."""
+        from paparaz.core.recovery import has_recovery, get_recovery_files, clear_recovery
+        if not has_recovery():
+            return
+        files = get_recovery_files()
+        from PySide6.QtWidgets import QMessageBox
+        msg = QMessageBox()
+        msg.setWindowTitle("PapaRaZ — Crash Recovery")
+        msg.setText(f"Found {len(files)} unsaved capture(s) from a previous session.")
+        msg.setInformativeText("Would you like to restore them?")
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+        if msg.exec() == QMessageBox.StandardButton.Yes:
+            for f in files:
+                pix = QPixmap(str(f))
+                if not pix.isNull():
+                    self._open_editor(pix)
+        # Always clear recovery files after handling
+        clear_recovery()
 
     def _check_updates(self):
         if self._settings.settings.auto_check_updates:
@@ -65,12 +100,23 @@ class PapaRazApp(QObject):
     def _on_hotkey(self, hk_id: int):
         if hk_id == self._capture_hk_id:
             QTimer.singleShot(150, self._start_capture)
+        elif hk_id == self._fullscreen_hk_id:
+            QTimer.singleShot(150, self._capture_fullscreen)
+        elif hk_id == self._window_hk_id:
+            QTimer.singleShot(150, self._capture_active_window)
+        elif hk_id == self._repeat_hk_id:
+            QTimer.singleShot(150, self._capture_repeat_last)
 
     def _delay_capture(self, seconds: int):
         self._tray.show_message("PapaRaZ", f"Capturing in {seconds} seconds...")
         QTimer.singleShot(seconds * 1000, self._start_capture)
 
     def _start_capture(self):
+        # Hide editor windows if the setting says so
+        if getattr(self._settings.settings, 'hide_editor_before_capture', True):
+            for ed in self._editors:
+                if ed.isVisible():
+                    ed.hide()
 
         # Find which monitor the cursor is on
         cursor_pos = QCursor.pos()
@@ -86,6 +132,14 @@ class PapaRazApp(QObject):
 
         # Capture only that monitor (physical pixels)
         self._full_capture = capture_monitor(target_screen)
+
+        # Overlay cursor if requested
+        if getattr(self._settings.settings, 'capture_cursor', False):
+            self._draw_cursor_on_capture(target_screen, cursor_pos)
+
+        # Play shutter sound if enabled
+        if getattr(self._settings.settings, 'capture_sound', False):
+            self._play_shutter_sound()
 
         # Show overlay on that monitor only
         self._overlay = RegionSelector(self._full_capture, target_screen)
@@ -120,12 +174,200 @@ class PapaRazApp(QObject):
                     _Qt.TransformationMode.SmoothTransformation,
                 )
 
+            # Save for repeat-last-region
+            self._last_capture_rect = rect
+            self._last_capture_screen = self._capture_screen
+
+            self._restore_hidden_editors()
             self._open_editor(cropped)
 
     def _on_selection_cancelled(self):
         if self._overlay:
             self._overlay.close()
             self._overlay = None
+        self._restore_hidden_editors()
+
+    def _capture_fullscreen(self):
+        """Capture the entire monitor under the cursor — no overlay, instant."""
+        if getattr(self._settings.settings, 'hide_editor_before_capture', True):
+            for ed in self._editors:
+                if ed.isVisible():
+                    ed.hide()
+
+        cursor_pos = QCursor.pos()
+        target_screen = None
+        for screen in QApplication.screens():
+            if screen.geometry().contains(cursor_pos):
+                target_screen = screen
+                break
+        if not target_screen:
+            target_screen = QApplication.primaryScreen()
+
+        pixmap = capture_monitor(target_screen)
+        self._capture_screen = target_screen
+
+        if getattr(self._settings.settings, 'capture_cursor', False):
+            self._full_capture = pixmap
+            self._draw_cursor_on_capture(target_screen, cursor_pos)
+            pixmap = self._full_capture
+
+        if getattr(self._settings.settings, 'capture_sound', False):
+            self._play_shutter_sound()
+
+        # Downscale to logical pixels
+        dpr = target_screen.devicePixelRatio()
+        if dpr != 1.0:
+            geo = target_screen.geometry()
+            pixmap = pixmap.scaled(
+                geo.width(), geo.height(),
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+        self._restore_hidden_editors()
+        self._open_editor(pixmap)
+
+    def _capture_active_window(self):
+        """Capture the currently active (foreground) window."""
+        import ctypes
+        from ctypes import wintypes
+
+        if getattr(self._settings.settings, 'hide_editor_before_capture', True):
+            for ed in self._editors:
+                if ed.isVisible():
+                    ed.hide()
+            # Brief delay so the window behind becomes foreground
+            QTimer.singleShot(200, self._do_capture_active_window)
+        else:
+            self._do_capture_active_window()
+
+    def _do_capture_active_window(self):
+        import ctypes
+        from ctypes import wintypes
+
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if not hwnd:
+            self._restore_hidden_editors()
+            return
+
+        rect = wintypes.RECT()
+        ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        x, y = rect.left, rect.top
+        w = rect.right - rect.left
+        h = rect.bottom - rect.top
+        if w <= 0 or h <= 0:
+            self._restore_hidden_editors()
+            return
+
+        from paparaz.core.capture import capture_region_native
+        pixmap = capture_region_native(x, y, w, h)
+
+        if getattr(self._settings.settings, 'capture_sound', False):
+            self._play_shutter_sound()
+
+        # Downscale if hi-DPI
+        screen = QApplication.screenAt(QPoint(x + w // 2, y + h // 2))
+        if screen:
+            dpr = screen.devicePixelRatio()
+            if dpr != 1.0:
+                lw = max(1, int(round(w / dpr)))
+                lh = max(1, int(round(h / dpr)))
+                pixmap = pixmap.scaled(
+                    lw, lh,
+                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+
+        self._restore_hidden_editors()
+        self._open_editor(pixmap)
+
+    def _capture_repeat_last(self):
+        """Re-capture the exact same region as the last selection."""
+        if not self._last_capture_rect or not getattr(self, '_last_capture_screen', None):
+            # No previous region — fall back to regular capture
+            self._start_capture()
+            return
+
+        if getattr(self._settings.settings, 'hide_editor_before_capture', True):
+            for ed in self._editors:
+                if ed.isVisible():
+                    ed.hide()
+
+        screen = self._last_capture_screen
+        pixmap = capture_monitor(screen)
+        self._capture_screen = screen
+        self._full_capture = pixmap
+
+        if getattr(self._settings.settings, 'capture_cursor', False):
+            self._draw_cursor_on_capture(screen, QCursor.pos())
+            pixmap = self._full_capture
+
+        if getattr(self._settings.settings, 'capture_sound', False):
+            self._play_shutter_sound()
+
+        rect = self._last_capture_rect
+        dpr = screen.devicePixelRatio()
+        px = int(rect.x() * dpr)
+        py = int(rect.y() * dpr)
+        pw = int(rect.width() * dpr)
+        ph = int(rect.height() * dpr)
+        cropped = capture_region(pixmap, px, py, pw, ph)
+
+        if dpr != 1.0:
+            lw = max(1, int(round(pw / dpr)))
+            lh = max(1, int(round(ph / dpr)))
+            cropped = cropped.scaled(
+                lw, lh,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+        self._restore_hidden_editors()
+        self._open_editor(cropped)
+
+    def _restore_hidden_editors(self):
+        """Re-show editors that were hidden before capture."""
+        for ed in self._editors:
+            if not ed.isVisible():
+                ed.show()
+
+    def _draw_cursor_on_capture(self, screen, cursor_pos: QPoint):
+        """Stamp the current mouse cursor onto the full capture pixmap."""
+        from PySide6.QtGui import QPainter, QPixmap as _QP
+        geo = screen.geometry()
+        dpr = screen.devicePixelRatio()
+        # Cursor position in physical pixels relative to the monitor
+        cx = int((cursor_pos.x() - geo.x()) * dpr)
+        cy = int((cursor_pos.y() - geo.y()) * dpr)
+        # Draw a simple arrow cursor (16×24 px)
+        cursor_pix = _QP(16, 24)
+        cursor_pix.fill(Qt.GlobalColor.transparent)
+        cp = QPainter(cursor_pix)
+        cp.setRenderHint(QPainter.RenderHint.Antialiasing)
+        from PySide6.QtGui import QPen, QBrush, QColor, QPolygonF
+        from PySide6.QtCore import QPointF
+        arrow = QPolygonF([
+            QPointF(0, 0), QPointF(0, 18), QPointF(4.5, 14),
+            QPointF(8, 22), QPointF(11, 20), QPointF(7.5, 12.5),
+            QPointF(12, 12), QPointF(0, 0),
+        ])
+        cp.setPen(QPen(QColor("black"), 1))
+        cp.setBrush(QBrush(QColor("white")))
+        cp.drawPolygon(arrow)
+        cp.end()
+        # Paint cursor onto full capture
+        p = QPainter(self._full_capture)
+        p.drawPixmap(cx, cy, cursor_pix)
+        p.end()
+
+    def _play_shutter_sound(self):
+        """Play a camera shutter sound effect."""
+        try:
+            import winsound
+            # Use a system asterisk as a stand-in; a custom .wav could be added later
+            winsound.MessageBeep(winsound.MB_OK)
+        except Exception:
+            pass
 
     def _open_editor(self, pixmap: QPixmap, elements: list = None):
         editor = EditorWindow(pixmap, settings_manager=self._settings)
@@ -137,24 +379,34 @@ class PapaRazApp(QObject):
             editor._canvas.elements = elements
             editor._canvas.update()
 
-        # Size to capture + toolbar chrome, tight fit, offset each new window slightly
-        screen = QApplication.primaryScreen()
-        if screen:
-            avail = screen.availableGeometry()
-            chrome_w = 16
-            chrome_h = 60
-            win_w = min(pixmap.width() + chrome_w, avail.width() - 40)
-            win_h = min(pixmap.height() + chrome_h, avail.height() - 40)
-            win_w = max(win_w, 400)
-            win_h = max(win_h, 250)
-            # Cascade offset so windows don't stack on top of each other
-            offset = (len(self._editors) - 1) * 24
-            x = avail.x() + (avail.width()  - win_w) // 2 + offset
-            y = avail.y() + (avail.height() - win_h) // 2 + offset
-            # Keep within screen
-            x = min(x, avail.right()  - win_w)
-            y = min(y, avail.bottom() - win_h)
-            editor.setGeometry(x, y, win_w, win_h)
+        # Restore saved geometry or size to capture + toolbar chrome
+        saved_geo = getattr(self._settings.settings, 'window_geometry', '')
+        restored = False
+        if saved_geo and len(self._editors) == 1:
+            try:
+                parts = [int(v) for v in saved_geo.split(',')]
+                if len(parts) == 4:
+                    x, y, w, h = parts
+                    editor.setGeometry(x, y, max(w, 400), max(h, 250))
+                    restored = True
+            except (ValueError, TypeError):
+                pass
+        if not restored:
+            screen = QApplication.primaryScreen()
+            if screen:
+                avail = screen.availableGeometry()
+                chrome_w = 16
+                chrome_h = 60
+                win_w = min(pixmap.width() + chrome_w, avail.width() - 40)
+                win_h = min(pixmap.height() + chrome_h, avail.height() - 40)
+                win_w = max(win_w, 400)
+                win_h = max(win_h, 250)
+                offset = (len(self._editors) - 1) * 24
+                x = avail.x() + (avail.width()  - win_w) // 2 + offset
+                y = avail.y() + (avail.height() - win_h) // 2 + offset
+                x = min(x, avail.right()  - win_w)
+                y = min(y, avail.bottom() - win_h)
+                editor.setGeometry(x, y, win_w, win_h)
         editor.show()
 
     def _on_file_saved(self, path: str):
@@ -165,6 +417,8 @@ class PapaRazApp(QObject):
     def _on_editor_closed(self, editor: EditorWindow):
         if editor in self._editors:
             self._editors.remove(editor)
+        if not self._editors and getattr(self._settings.settings, 'exit_on_close', False):
+            QApplication.quit()
 
     def _open_image(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -182,6 +436,13 @@ class PapaRazApp(QObject):
             pixmap = QPixmap(path)
             if not pixmap.isNull():
                 self._open_editor(pixmap)
+                return
+        # File missing — remove from recent list and notify
+        if path in self._settings.settings.recent_captures:
+            self._settings.settings.recent_captures.remove(path)
+            self._settings.save()
+            self._tray.update_recent(self._settings.settings.recent_captures)
+        self._tray.show_message("PapaRaZ", f"File not found:\n{Path(path).name}")
 
     def _pin_screenshot(self, rendered: QPixmap, background: QPixmap, elements: list):
         pin = PinWindow(rendered, background=background, elements=elements)

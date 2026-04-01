@@ -32,9 +32,9 @@ QLabel#fnPreviewLbl {
     padding: 2px 0; background: transparent;
 }
 QLabel#fnPreviewVal {
-    color: #c0c0e0; font-size: 11px; font-family: Consolas, monospace;
-    background: #111120; border: 1px solid #2a2a3e;
-    border-radius: 3px; padding: 4px 8px;
+    color: #c080ff; font-size: 12px; font-family: Consolas, monospace;
+    background: #111120; border: 1px solid #3a2a5e;
+    border-radius: 3px; padding: 5px 8px;
 }
 QLineEdit#fnPatternEdit {
     background: #111120; color: #e0e0ff;
@@ -90,9 +90,11 @@ class FilenamePatternWidget(QWidget):
 
         self._preset_combo = QComboBox()
         self._preset_combo.setObjectName("fnPresetCombo")
+        self._preset_combo.setMaximumWidth(240)
         for p in PRESETS:
             self._preset_combo.addItem(p["label"], p["pattern"])
-        preset_row.addWidget(self._preset_combo, 1)
+        preset_row.addWidget(self._preset_combo)
+        preset_row.addStretch()
         root.addLayout(preset_row)
 
         # ── Pattern input ────────────────────────────────────────────────────
@@ -166,6 +168,11 @@ class FilenamePatternWidget(QWidget):
         self._update_preset_combo(pattern)
         self._refresh_preview()
 
+    def set_extension(self, ext: str):
+        """Set the file extension shown in the preview (e.g. 'png', 'jpg')."""
+        self._ext = f".{ext.lstrip('.')}" if ext else ".png"
+        self._refresh_preview()
+
     def get_pattern(self) -> str:
         return self._pattern_edit.text().strip()
 
@@ -214,7 +221,7 @@ class FilenamePatternWidget(QWidget):
             return
         try:
             sample = fp_preview(pat)
-            ext = ".png"
+            ext = getattr(self, '_ext', '.png')
             self._preview_val.setText(f"{sample}{ext}")
         except Exception as e:
             self._preview_val.setText(f"Error: {e}")

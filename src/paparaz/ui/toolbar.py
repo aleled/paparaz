@@ -75,6 +75,7 @@ TOOL_DEFS = [
     (ToolType.CROP,        "crop",        "Crop (C)"),
     (ToolType.SLICE,       "slice",       "Slice (Z)"),
     (ToolType.EYEDROPPER,  "eyedropper",  "Eyedropper (I)"),
+    (ToolType.MAGNIFIER,   "magnifier",   "Magnifier (G)"),
 ]
 
 ACTION_DEFS = [
@@ -87,6 +88,7 @@ ACTION_DEFS = [
     ("bring_front",   "Front (Ctrl+])"),
     ("send_back",     "Back (Ctrl+[)"),
     ("resize_canvas", "Resize Canvas"),
+    ("layers",        "Layers Panel"),
     ("palette",       "Theme Presets"),
     ("settings",      "Settings"),
 ]
@@ -249,6 +251,7 @@ class MultiEdgeToolbar(QObject):
     crop_requested = Signal()
     theme_preset_requested = Signal()
     settings_requested = Signal()
+    layers_requested = Signal()
     tool_props_requested = Signal(ToolType, QPoint)
 
     def __init__(self, parent=None):
@@ -313,6 +316,7 @@ class MultiEdgeToolbar(QObject):
             "bring_front":   self.bring_front_requested,
             "send_back":     self.send_back_requested,
             "resize_canvas": self.resize_canvas_requested,
+            "layers":        self.layers_requested,
             "close":         self.close_requested,
             "theme_preset":  self.theme_preset_requested,
             "settings":      self.settings_requested,
@@ -322,8 +326,8 @@ class MultiEdgeToolbar(QObject):
         # ACTION_DEFS has (icon_name, tooltip). We need to match by position to signal.
         action_signal_keys = [
             "undo", "redo", "save", "copy", "paste",
-            "pin", "bring_front", "send_back", "resize_canvas", "theme_preset",
-            "settings",
+            "pin", "bring_front", "send_back", "resize_canvas", "layers",
+            "theme_preset", "settings",
         ]
         for (icon_name, tooltip), sig_key in zip(ACTION_DEFS, action_signal_keys):
             btn = self._make_btn(icon_name, tooltip, checkable=False,

@@ -11,6 +11,7 @@ from paparaz.core.elements import (
     _rotate_point,
 )
 from paparaz.core.history import Command
+from paparaz.core.snap import snap_move, snap_point
 
 
 def _rot(pt: QPointF, cx: float, cy: float, cos_r: float, sin_r: float) -> QPointF:
@@ -149,14 +150,63 @@ class SelectTool(BaseTool):
                     return
                 break
 
+    def _get_snap_rects(self, exclude=None) -> list[QRectF]:
+        """Collect bounding rects of all visible, unlocked, non-selected elements."""
+        excluded = set()
+        if exclude is not None:
+            if isinstance(exclude, list):
+                excluded = set(id(e) for e in exclude)
+            else:
+                excluded = {id(exclude)}
+        return [
+            e.bounding_rect()
+            for e in self.canvas.elements
+            if e.visible and not e.locked and id(e) not in excluded and not e.selected
+        ]
+
+    def _apply_snap_move(self, elem_or_elems, dx: float, dy: float) -> tuple[float, float]:
+        """Apply snapping to a move delta. Returns adjusted (dx, dy)."""
+        c = self.canvas
+        if not c.snap_enabled:
+            c._snap_guides = []
+            return dx, dy
+
+        # Get a combined bounding rect for the element(s) being moved
+        if isinstance(elem_or_elems, list):
+            elems = elem_or_elems
+            rects = [e.bounding_rect() for e in elems]
+            union = rects[0]
+            for r in rects[1:]:
+                union = union.united(r)
+            exclude = elems
+        else:
+            union = elem_or_elems.bounding_rect()
+            exclude = elem_or_elems
+
+        # Proposed rect after raw delta
+        proposed = union.translated(dx, dy)
+
+        other_rects = self._get_snap_rects(exclude) if c.snap_to_elements else []
+        offset, guides = snap_move(
+            proposed,
+            c.canvas_rect(),
+            other_rects,
+            threshold=c.snap_threshold,
+            snap_to_canvas=c.snap_to_canvas,
+            snap_to_elements=c.snap_to_elements,
+            grid_size=c.snap_grid_size if c.snap_grid_enabled else 0,
+        )
+        c._snap_guides = guides
+        return dx + offset.x(), dy + offset.y()
+
     def on_move(self, pos: QPointF, event: QMouseEvent):
         if self._rubber_active:
             self._rubber_rect = QRectF(self._rubber_start, pos).normalized()
             self.canvas.update()
         elif self._dragging and self._multi_selected:
-            # Move all multi-selected elements
             dx = pos.x() - self._drag_start.x()
             dy = pos.y() - self._drag_start.y()
+            dx, dy = self._apply_snap_move(self._multi_selected, dx, dy)
             for elem in self._multi_selected:
                 elem.move_by(dx, dy)
             self._drag_start = pos
@@ -164,6 +214,7 @@ class SelectTool(BaseTool):
         elif self._dragging and self.canvas.selected_element:
             dx = pos.x() - self._drag_start.x()
             dy = pos.y() - self._drag_start.y()
+            dx, dy = self._apply_snap_move(self.canvas.selected_element, dx, dy)
             self.canvas.selected_element.move_by(dx, dy)
             self._drag_start = pos
             self.canvas.update()
@@ -267,6 +318,8 @@ class SelectTool(BaseTool):
         self._resizing = False
         self._handle_index = None
         self._multi_orig_positions.clear()
+        # Clear snap guides
+        self.canvas._snap_guides = []
         # Restore cursor after drag/resize ends
         self.canvas.setCursor(Qt.CursorShape.ArrowCursor)
 

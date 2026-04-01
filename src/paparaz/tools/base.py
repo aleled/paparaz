@@ -29,6 +29,7 @@ class ToolType(Enum):
     CROP = auto()
     SLICE = auto()
     EYEDROPPER = auto()
+    MAGNIFIER = auto()
 
 
 class BaseTool:

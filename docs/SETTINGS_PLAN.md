@@ -87,35 +87,42 @@ About          — version, tech stack, license
 ## Implementation Tasks
 
 ### Priority 1 — Bug Fixes (settings already broken)
-- [ ] **Fix shadow blur** — replace single spinbox with two `_slider_row` widgets for blur_x and blur_y
-- [ ] **Fix font family** — replace `QLineEdit` with `QFontComboBox`
-- [ ] **Fix shadow save path** — `_save_and_close` writes `shadow_default_blur` not `blur_x/blur_y`
-- [ ] **Add select_all hotkey** to Shortcuts page configurable section
+- [x] **Fix shadow blur** — replace single spinbox with two `_slider_row` widgets for blur_x and blur_y
+- [x] **Fix font family** — replace `QLineEdit` with `QFontComboBox`
+- [x] **Fix shadow save path** — `_save_and_close` writes `shadow_default_blur` not `blur_x/blur_y`
+- [x] **Add select_all hotkey** to Shortcuts page configurable section
 
 ### Priority 2 — New Behavior Page
-- [ ] Add `AppSettings` fields: `panel_auto_hide_ms`, `zoom_scroll_factor`, `paste_offset`, `tray_notification_ms`, `tray_dbl_click_action`, `save_behavior`
-- [ ] Wire `panel_auto_hide_ms` into `side_panel.py` `AUTO_HIDE_DELAY_MS`
-- [ ] Wire `zoom_scroll_factor` into `canvas.py` scroll handler
-- [ ] Wire `save_behavior` into `editor.py` `_confirm_close`
-- [ ] Build `_build_behavior()` page in settings dialog
+- [x] Add `AppSettings` fields: `panel_auto_hide_ms`, `zoom_scroll_factor`
+- [x] Wire `panel_auto_hide_ms` into `side_panel.py` `AUTO_HIDE_DELAY_MS`
+- [x] Wire `zoom_scroll_factor` into `canvas.py` scroll handler
+- [x] Wire `hide_editor_before_capture` into `app.py` capture flow
+- [x] Wire `confirm_close_unsaved` into `editor.py` `_confirm_close`
+- [x] Build `_build_behavior()` page in settings dialog (with canvas background, panel auto-hide, zoom speed)
+- [ ] Add `paste_offset`, `tray_notification_ms`, `tray_dbl_click_action`, `save_behavior` fields
 
 ### Priority 3 — Tools Page Improvements
-- [ ] Add `highlight_default_color` and `highlight_default_width` to `AppSettings` + `ToolDefaults`
-- [ ] Wire highlight defaults into `HighlightTool.on_activate()`
+- [x] Add `highlight_default_color` and `highlight_default_width` to `AppSettings`
+- [x] Wire highlight defaults into `HighlightTool.on_activate()`
 - [ ] Add `arrow_head_size` preference (small/medium/large) — stored as multiplier
-- [ ] Add `default_stamp_id` to `AppSettings`; wire into `StampTool`
-- [ ] Add `default_blur_pixels` to `AppSettings`; wire into `MasqueradeTool`
+- [x] Add `default_stamp_id` to `AppSettings`; wire into `StampTool`
+- [x] Add `default_blur_pixels` to `AppSettings`; wire into `MasqueradeTool`
+- [x] Add specialized tool defaults section in settings dialog (highlight color/width, blur pixels, default stamp)
 
 ### Priority 4 — Appearance Page
-- [ ] Show `recent_colors` list in Appearance page with individual remove + "Clear all" button
-- [ ] Add `max_recent` spinbox to Capture page → Capture Behavior section
+- [x] Show `recent_colors` list in Appearance page with "Clear all" button
+- [x] Add `max_recent` spinbox to Capture page → Capture Behavior section
 - [ ] Add selection handle size slider (visual preference, stored in `AppSettings`)
 
 ### Priority 5 — Layout & Polish
 - [ ] Reduce QGroupBox card padding — currently `padding: 16px 14px` is too generous
-- [ ] Convert font family `QLineEdit` → `QFontComboBox`
+- [x] Convert font family `QLineEdit` → `QFontComboBox`
 - [ ] Add tooltips to every settings control
 - [ ] Use 2-column grid for Tool Defaults section (colors side by side, not stacked)
+
+### Priority 6 — Window Geometry
+- [x] Save editor window geometry on close
+- [x] Restore saved geometry when opening first editor window
 
 ---
 

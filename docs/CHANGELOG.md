@@ -1,5 +1,79 @@
 # PapaRaZ - Changelog
 
+## [0.9.6] - 2026-04-01
+
+### Multiple Capture Modes
+- **Ctrl+PrintScreen**: Capture full screen (instant, no overlay)
+- **Alt+PrintScreen**: Capture active window
+- **Shift+PrintScreen**: Repeat last captured region
+- All three hotkeys are configurable in Settings → Shortcuts
+
+### Settings — Behavior Page Enhancements
+- "Exit app when last editor closes" toggle (vs stay in tray)
+- Include mouse cursor in captures toggle
+- Capture shutter sound toggle
+- Default panel mode on open (Auto / Pinned / Hidden)
+- Default zoom level on open (Fit / 100% / Fill / Remember last)
+
+### Settings — Output
+- PNG compression level (0–9) in Capture page
+- Auto-copy to clipboard after every save
+- Open saved file in default app after save
+
+### Settings — Appearance
+- Recent colors display with "Clear all" button
+- Max recent captures spinbox in Capture page
+
+### Settings — Tools
+- Highlight default color and width configurable
+- Default stamp ID selectable
+- Default blur pixel size configurable
+- Tool defaults wired into HighlightTool, StampTool, MasqueradeTool
+
+### Editor
+- Window geometry (position + size) persisted across sessions
+- Default zoom applied on open (Fit/100%/Fill/Remember)
+- Zoom level saved on close when "Remember" mode is active
+- Filename preview now accent-colored and format-aware
+
+### Hotkeys UX Overhaul
+- Shortcuts page split into "Capture Hotkeys (global)" and "Editor Shortcuts" sections
+- Modifier checkboxes (Shift/Ctrl/Alt) as styled toggle buttons + key dropdown per action
+- Replaces freeform text input with structured, error-proof hotkey editor
+
+### License & Credits
+- About page now shows full MIT license text in monospace styled label
+- Third-party credits section: PySide6, Pillow, PyInstaller, winrt
+
+### Layers Panel
+- Floating panel with element list in z-order (top = front)
+- Drag-and-drop reordering via QListWidget InternalMove
+- Move up / move down / delete buttons
+- Element type icons and names for each layer entry
+- Toggled via toolbar "Layers" action button
+
+### Magnifier Tool (G)
+- Drag to select source region, creates zoomed callout annotation
+- MagnifierElement renders 2× magnified content from canvas background
+- Border, zoom label ("2×"), and dashed source indicator overlay
+- Crosshair hover preview while positioning
+
+### Light Theme
+- New "light" theme added to APP_THEMES: bright backgrounds, dark text, purple accent
+- Selectable in Settings → Appearance alongside existing dark/midnight/ocean/forest/warm themes
+
+### Auto-Save / Crash Recovery
+- Periodic recovery snapshots saved to `~/.paparaz/recovery/` (configurable interval, default 60s)
+- On startup: detects recovery files, offers restore via QMessageBox
+- Recovery files cleaned up on normal editor close
+- Settings: auto-save interval spinbox + crash recovery toggle in Behavior page
+
+### Bug Fixes
+- Fix: editors hidden before capture now properly re-shown after successful capture (not just on cancel)
+- Fix: PNG save now respects compression level setting
+
+---
+
 ## [0.9.5] - 2026-03-31
 
 ### Properties Panel — Complete UX Overhaul

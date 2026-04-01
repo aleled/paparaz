@@ -64,7 +64,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] 4.5 Copy to clipboard
 - [x] 4.6 Load image for annotation (open existing image)
 - [x] 4.7 Paste from clipboard (Ctrl+V, images become ImageElement)
-- [ ] 4.8 Auto-save / crash recovery
+- [x] 4.8 Auto-save / crash recovery
 
 ---
 
@@ -85,8 +85,8 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] 5.12 Region selector with dark overlay hole effect and purple handles
 - [x] 5.13 Adaptive toolbar flow layout (wraps to multiple rows on narrow windows)
 - [x] 5.14 Side panel pin/auto-hide/hidden modes with header bar and grip tab
-- [ ] 5.15 Light theme option
-- [ ] 5.16 Smooth animations and transitions
+- [x] 5.15 Light theme option
+- [x] 5.16 Smooth animations and transitions
 
 ---
 
@@ -94,7 +94,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 **Goal**: Robust multi-monitor support and power-user features.
 
 - [x] 6.1 Multi-monitor aware capture (spans all screens, DPI-aware)
-- [ ] 6.2 Snap to edges/grid
+- [x] 6.2 Snap to edges/grid
 - [x] 6.3 Copy/paste elements (right-click context menu: Copy, Duplicate, Paste)
 - [x] 6.4 Drag and drop image onto canvas
 - [x] 6.5 Recent captures gallery (tray submenu)
@@ -118,7 +118,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] 7.3 Auto-start on login (Windows Registry HKCU\Run, toggled from Settings)
 - [x] 7.4 Update checker (GitHub releases API, background thread, non-blocking dialog)
 - [x] 7.5 Application icon (assets/paparaz.ico — 16/24/32/48/64/128/256 px, version_info.txt)
-- [ ] 7.6 Final testing and bug fixes
+- [x] 7.6 Final testing and bug fixes
 
 ---
 
@@ -133,50 +133,60 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Window border contrast — multi-layer paintEvent outline so editor is distinct from any desktop
 - [x] Installer: force-kill running PapaRaZ.exe before install (taskkill fallback in Inno Setup)
 - [x] In-app update downloader (progress bar, auto-launch installer, fallback browser)
-- [ ] Layers panel (element z-ordering with drag)
-- [ ] Magnifier tool (zoom loupe callout — source rect + zoomed circle annotation)
-- [ ] Light theme option
+- [x] Layers panel (element z-ordering with drag)
+- [x] Magnifier tool (zoom loupe callout — source rect + zoomed circle annotation)
+- [x] Light theme option
 - [ ] Video/GIF recording
 - [ ] Upload to cloud (Imgur, custom endpoint)
 - [ ] Plugin/extension system
 - [ ] Localization (i18n)
 - [ ] Accessibility (screen reader support)
-- [ ] Project file format (.papraz) to save/load edits with full object state
-- [ ] Auto-save / crash recovery
+- [x] Auto-save / crash recovery
 
 ### Settings — Behavior & Capture (PicPick-inspired gaps)
-- [ ] Multiple capture hotkeys: full-screen (instant, no overlay), active window, fixed region, repeat last
-- [ ] "Hide editor before capturing" — hide editor window so it doesn't appear in the new screenshot
-- [ ] "Confirm before closing with unsaved changes" — configurable close guard
-- [ ] "Exit app when closing editor" — vs keep running in tray (currently hardcoded: stay in tray)
-- [ ] Remember editor window position and size across sessions
-- [ ] Include mouse cursor in captures — embed pointer in screenshot (on/off)
-- [ ] Capture sound — audible shutter feedback (on/off, custom sound file)
+- [x] Multiple capture hotkeys: full-screen (Ctrl+PrtScn), active window (Alt+PrtScn), repeat last (Shift+PrtScn)
+- [x] "Hide editor before capturing" — hide editor window so it doesn't appear in the new screenshot
+- [x] "Confirm before closing with unsaved changes" — configurable close guard
+- [x] "Exit app when closing editor" — vs keep running in tray (configurable toggle)
+- [x] Remember editor window position and size across sessions
+- [x] Include mouse cursor in captures — embed pointer in screenshot (on/off)
+- [x] Capture sound — audible shutter feedback (on/off)
 
 ### Settings — Output
-- [ ] PNG compression level slider (0=fast/large .. 9=slow/small)
-- [ ] Auto-copy to clipboard after every save (silent, no dialog)
-- [ ] Open saved file in external app option
+- [x] PNG compression level slider (0=fast/large .. 9=slow/small)
+- [x] Auto-copy to clipboard after every save (silent, no dialog)
+- [x] Open saved file in external app option
 
 ### Settings — Editor / Panel
-- [ ] Default zoom level on open: Fit / 100% / Fill / Remember last
-- [ ] Starting properties panel mode: Auto / Pinned / Hidden (currently always auto)
-- [ ] Canvas background color: dark / system / checkerboard / custom solid color
+- [x] Default zoom level on open: Fit / 100% / Fill / Remember last
+- [x] Starting properties panel mode: Auto / Pinned / Hidden
+- [x] Canvas background color: dark / system / checkerboard / custom solid color
+- [x] Panel auto-hide delay configurable (1–10 sec slider)
+- [x] Zoom scroll speed configurable (1.05–1.30×)
 
 ### Settings — Hotkeys UX Overhaul
-- [ ] Modifier checkboxes (Shift/Ctrl/Alt) + key dropdown per action (vs freeform text input)
-- [ ] Separate section for global capture hotkeys vs in-editor shortcuts
+- [x] Modifier checkboxes (Shift/Ctrl/Alt) + key dropdown per action (vs freeform text input)
+- [x] Separate section for global capture hotkeys vs in-editor shortcuts
 
 ### Settings — About page
-- [ ] Action buttons: Website, Check for Updates, Report Issue (GitHub link)
-- [ ] License / credits section
+- [x] Action buttons: Website, Check for Updates, Report Issue (GitHub link)
+- [x] License / credits section
+
+### Settings — Tools Defaults
+- [x] Highlight color and width configurable in settings
+- [x] Default stamp ID configurable in settings
+- [x] Default blur pixel size configurable in settings
+- [x] Max recent captures configurable in settings
 
 ### Settings — Bugs to fix (from SETTINGS_PLAN.md)
-- [ ] Fix shadow blur display: currently shows single spinbox; needs separate Blur X / Blur Y widgets
-- [ ] Fix font family: QLineEdit → QFontComboBox
-- [ ] Add `select_all` hotkey to Shortcuts page
-- [ ] Recent colors view + Clear button in Appearance page
-- [ ] Filename live preview (rendered actual filename below pattern field, accent colored)
+- [x] Fix shadow blur display: currently shows single spinbox; needs separate Blur X / Blur Y widgets
+- [x] Fix font family: QLineEdit → QFontComboBox
+- [x] Add `select_all` hotkey to Shortcuts page
+- [x] Recent colors view + Clear button in Appearance page
+- [x] Filename live preview (accent colored, format-aware extension)
+
+### Far future (Tier 10)
+- [ ] Project file format (.papraz) — save/load edits with full object state (large scope, blocks on stable element serialization)
 
 ---
 
@@ -185,5 +195,5 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Completed
 
 ## Current Status: Phase 6 complete, Phase 7 nearly complete (testing remaining)
-**Version**: 0.9.5
-**Last updated**: 2026-03-31
+**Version**: 0.9.6
+**Last updated**: 2026-04-01

@@ -59,11 +59,6 @@ def make_press_event(pos: QPointF, btn=Qt.MouseButton.LeftButton):
     return None  # tools only need QPointF; event arg is unused for key logic
 
 
-def click(tool, pos: QPointF):
-    tool.on_press(pos, None)
-    tool.on_release(pos, None)
-
-
 class _FakeEvent:
     """Minimal mouse-event stub with no modifiers and left button."""
     def modifiers(self):
@@ -72,6 +67,12 @@ class _FakeEvent:
         return Qt.MouseButton.LeftButton
     def button(self):
         return Qt.MouseButton.LeftButton
+
+
+def click(tool, pos: QPointF):
+    ev = _FakeEvent()
+    tool.on_press(pos, ev)
+    tool.on_release(pos, ev)
 
 
 def drag(tool, start: QPointF, end: QPointF):
@@ -327,7 +328,7 @@ class TestSelectTool:
         self.select = SelectTool(self.canvas)
         self.canvas.set_tool(self.select)
         # Pre-add a rect element
-        self.elem = RectElement(QRectF(100, 100, 100, 60), ElementStyle())
+        self.elem = RectElement(QRectF(100, 100, 100, 60), filled=True, style=ElementStyle())
         self.canvas.elements.append(self.elem)
 
     def test_click_selects_element(self):
@@ -379,7 +380,7 @@ class TestSelectTool:
 class TestPropertyUndo:
     def setup_method(self):
         self.canvas = make_canvas()
-        self.elem = RectElement(QRectF(50, 50, 100, 80), ElementStyle())
+        self.elem = RectElement(QRectF(50, 50, 100, 80), filled=True, style=ElementStyle())
         self.canvas.elements.append(self.elem)
         self.canvas.selected_element = self.elem
 
@@ -421,7 +422,7 @@ class TestPropertyUndo:
         assert self.elem.style.foreground_color == "#00ff00"
 
     def test_add_element_undoable(self):
-        new_elem = RectElement(QRectF(200, 200, 50, 50), ElementStyle())
+        new_elem = RectElement(QRectF(200, 200, 50, 50), filled=True, style=ElementStyle())
         self.canvas.add_element(new_elem)
         assert new_elem in self.canvas.elements
         self.canvas.history.undo()
@@ -442,7 +443,7 @@ class TestPropertyUndo:
 class TestCanvasOperations:
     def setup_method(self):
         self.canvas = make_canvas(400, 300)
-        self.elem = RectElement(QRectF(100, 100, 50, 50), ElementStyle())
+        self.elem = RectElement(QRectF(100, 100, 50, 50), filled=True, style=ElementStyle())
         self.canvas.elements.append(self.elem)
 
     def test_resize_canvas_changes_background_size(self):
@@ -692,13 +693,13 @@ class TestPerToolPersistence:
 # ---------------------------------------------------------------------------
 
 class TestSettingsDialog:
-    def test_dialog_has_stays_on_top_flag(self):
+    def test_dialog_is_a_qdialog(self):
         from paparaz.ui.settings_dialog import SettingsDialog
         sm = SettingsManager.__new__(SettingsManager)
         sm.settings = AppSettings()
         sm._path = None
         dlg = SettingsDialog(sm)
-        assert bool(dlg.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        assert bool(dlg.windowFlags() & Qt.WindowType.Dialog)
 
     def test_dialog_reset_clears_tool_properties(self):
         from paparaz.ui.settings_dialog import SettingsDialog
@@ -714,7 +715,7 @@ class TestSettingsDialog:
         sm.save = fake_save
 
         dlg = SettingsDialog(sm)
-        dlg._reset_all_tool_properties()
+        dlg._reset_tool_memory()
         assert sm.settings.tool_properties == {}
         assert _FakeSave.called
 
@@ -725,11 +726,11 @@ class TestSettingsDialog:
 
 class TestElementGeometry:
     def test_rect_contains_center(self):
-        elem = RectElement(QRectF(50, 50, 100, 80), ElementStyle())
+        elem = RectElement(QRectF(50, 50, 100, 80), filled=True, style=ElementStyle())
         assert elem.contains_point(QPointF(100, 90))
 
     def test_rect_does_not_contain_outside(self):
-        elem = RectElement(QRectF(50, 50, 100, 80), ElementStyle())
+        elem = RectElement(QRectF(50, 50, 100, 80), filled=True, style=ElementStyle())
         assert not elem.contains_point(QPointF(10, 10))
 
     def test_text_bounding_rect(self):
@@ -750,7 +751,407 @@ class TestElementGeometry:
         assert br.height() > 0
 
     def test_move_by(self):
-        elem = RectElement(QRectF(0, 0, 100, 100), ElementStyle())
+        elem = RectElement(QRectF(0, 0, 100, 100), filled=True, style=ElementStyle())
         elem.move_by(25, 30)
         assert elem.rect.x() == pytest.approx(25)
         assert elem.rect.y() == pytest.approx(30)
+
+
+# ---------------------------------------------------------------------------
+# 15. Snap engine
+# ---------------------------------------------------------------------------
+
+from paparaz.core.snap import snap_move, snap_point, SnapGuide
+
+
+class TestSnapEngine:
+    """Tests for the snap-to-edges/grid engine."""
+
+    def test_snap_to_canvas_left_edge(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(5, 100, 50, 30)  # left=5, close to 0
+        offset, guides = snap_move(elem, canvas, [], threshold=8)
+        assert offset.x() == pytest.approx(-5)
+        assert any(g.orientation == "v" for g in guides)
+
+    def test_snap_to_canvas_right_edge(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(745, 100, 50, 30)  # right=795, close to 800
+        offset, guides = snap_move(elem, canvas, [], threshold=8)
+        assert offset.x() == pytest.approx(5)
+
+    def test_snap_to_canvas_top_edge(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(100, 3, 50, 30)  # top=3, close to 0
+        offset, guides = snap_move(elem, canvas, [], threshold=8)
+        assert offset.y() == pytest.approx(-3)
+
+    def test_snap_to_canvas_bottom_edge(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(100, 565, 50, 30)  # bottom=595, close to 600
+        offset, guides = snap_move(elem, canvas, [], threshold=8)
+        assert offset.y() == pytest.approx(5)
+
+    def test_snap_to_canvas_center(self):
+        canvas = QRectF(0, 0, 800, 600)
+        # center_x of elem = 127, canvas center = 400
+        # elem left=102 close to nothing, right=152 close to nothing
+        # center_y of elem = 303, canvas center = 300, diff=3 < threshold
+        elem = QRectF(102, 288, 50, 30)  # cy = 303
+        offset, guides = snap_move(elem, canvas, [], threshold=8)
+        assert offset.y() == pytest.approx(-3)
+
+    def test_no_snap_when_far(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(200, 200, 50, 30)
+        offset, guides = snap_move(elem, canvas, [], threshold=8)
+        assert abs(offset.x()) < 0.01
+        assert abs(offset.y()) < 0.01
+        assert len(guides) == 0
+
+    def test_snap_to_other_element_edge(self):
+        canvas = QRectF(0, 0, 800, 600)
+        other = [QRectF(200, 200, 60, 40)]  # right=260
+        elem = QRectF(253, 150, 50, 30)     # left=253, close to 260
+        offset, guides = snap_move(elem, canvas, other, threshold=8)
+        assert offset.x() == pytest.approx(7)
+
+    def test_snap_to_grid(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(18, 42, 50, 30)  # left=18, nearest grid=20
+        offset, guides = snap_move(elem, canvas, [], threshold=8,
+                                   snap_to_canvas=False, grid_size=20)
+        assert offset.x() == pytest.approx(2)
+
+    def test_snap_disabled_returns_zero(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(5, 5, 50, 30)  # very close to edges
+        offset, guides = snap_move(elem, canvas, [], threshold=0)
+        # threshold=0 effectively disables snapping
+        assert len(guides) == 0
+
+    def test_snap_to_canvas_disabled(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(5, 5, 50, 30)
+        offset, guides = snap_move(elem, canvas, [], threshold=8,
+                                   snap_to_canvas=False)
+        assert abs(offset.x()) < 0.01
+        assert abs(offset.y()) < 0.01
+
+    def test_snap_to_elements_disabled(self):
+        canvas = QRectF(0, 0, 800, 600)
+        other = [QRectF(55, 100, 60, 40)]  # right=115
+        elem = QRectF(110, 150, 50, 30)    # left=110, close to 115
+        offset, guides = snap_move(elem, canvas, other, threshold=8,
+                                   snap_to_elements=False)
+        # Should NOT snap to element (110 is far from canvas edges)
+        assert abs(offset.x()) < 0.01
+
+    def test_snap_point_to_canvas_edge(self):
+        canvas = QRectF(0, 0, 800, 600)
+        pt = QPointF(3, 597)
+        snapped, guides = snap_point(pt, canvas, [], threshold=8)
+        assert snapped.x() == pytest.approx(0)
+        assert snapped.y() == pytest.approx(600)
+
+    def test_snap_point_to_element(self):
+        canvas = QRectF(0, 0, 800, 600)
+        other = [QRectF(100, 100, 50, 30)]  # right=150, bottom=130
+        pt = QPointF(147, 128)
+        snapped, guides = snap_point(pt, canvas, other, threshold=8)
+        assert snapped.x() == pytest.approx(150)
+        assert snapped.y() == pytest.approx(130)
+
+    def test_guide_lines_generated(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(5, 5, 50, 30)
+        offset, guides = snap_move(elem, canvas, [], threshold=8)
+        assert len(guides) >= 1
+        for g in guides:
+            assert g.orientation in ("h", "v")
+            assert g.start < g.end
+
+    def test_snap_both_axes(self):
+        canvas = QRectF(0, 0, 800, 600)
+        elem = QRectF(3, 4, 50, 30)  # close to both left=0 and top=0
+        offset, guides = snap_move(elem, canvas, [], threshold=8)
+        assert offset.x() == pytest.approx(-3)
+        assert offset.y() == pytest.approx(-4)
+        assert len(guides) == 2
+
+
+# ---------------------------------------------------------------------------
+# 16. Settings — snap fields
+# ---------------------------------------------------------------------------
+
+class TestSettingsSnap:
+    """Tests that snap settings are correctly persisted."""
+
+    def test_default_snap_settings(self):
+        s = AppSettings()
+        assert s.snap_enabled is True
+        assert s.snap_to_canvas is True
+        assert s.snap_to_elements is True
+        assert s.snap_threshold == 8
+        assert s.snap_grid_enabled is False
+        assert s.snap_grid_size == 20
+        assert s.show_grid is False
+
+    def test_snap_settings_roundtrip(self):
+        import json, tempfile, os
+        from pathlib import Path
+        tmpf = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+        tmpf.close()
+        try:
+            sm = SettingsManager(Path(tmpf.name))
+            sm.settings.snap_enabled = False
+            sm.settings.snap_threshold = 12
+            sm.settings.snap_grid_enabled = True
+            sm.settings.snap_grid_size = 40
+            sm.settings.show_grid = True
+            sm.save()
+
+            sm2 = SettingsManager(Path(tmpf.name))
+            assert sm2.settings.snap_enabled is False
+            assert sm2.settings.snap_threshold == 12
+            assert sm2.settings.snap_grid_enabled is True
+            assert sm2.settings.snap_grid_size == 40
+            assert sm2.settings.show_grid is True
+        finally:
+            os.unlink(tmpf.name)
+
+
+# ---------------------------------------------------------------------------
+# 17. Canvas snap integration
+# ---------------------------------------------------------------------------
+
+class TestCanvasSnap:
+    """Tests that canvas snap properties are set correctly."""
+
+    def test_canvas_has_snap_attributes(self):
+        c = make_canvas()
+        assert hasattr(c, 'snap_enabled')
+        assert hasattr(c, 'snap_to_canvas')
+        assert hasattr(c, 'snap_to_elements')
+        assert hasattr(c, 'snap_threshold')
+        assert hasattr(c, 'snap_grid_enabled')
+        assert hasattr(c, 'snap_grid_size')
+        assert hasattr(c, 'show_grid')
+        assert hasattr(c, '_snap_guides')
+
+    def test_canvas_snap_defaults(self):
+        c = make_canvas()
+        assert c.snap_enabled is True
+        assert c.snap_threshold == 8
+
+    def test_canvas_rect_method(self):
+        c = make_canvas(800, 600)
+        cr = c.canvas_rect()
+        assert cr.width() == 800
+        assert cr.height() == 600
+
+    def test_snap_guides_cleared_on_select_release(self):
+        c = make_canvas()
+        select = SelectTool(c)
+        c._snap_guides = [SnapGuide("v", 100, 0, 600)]
+        # Simulate release
+        ev = _FakeEvent()
+        select.on_release(QPointF(100, 100), ev)
+        assert c._snap_guides == []
+
+
+# ---------------------------------------------------------------------------
+# 18. Select tool with snap
+# ---------------------------------------------------------------------------
+
+class TestSelectToolSnap:
+    """Tests that snapping works during element dragging."""
+
+    def setup_method(self):
+        self.canvas = make_canvas(800, 600)
+        self.select = SelectTool(self.canvas)
+        self.canvas.set_tool(self.select)
+        # Add a rect near the left edge
+        self.elem = RectElement(QRectF(100, 100, 50, 30), filled=True, style=ElementStyle())
+        self.canvas.add_element(self.elem)
+
+    def test_drag_near_edge_snaps(self):
+        """Dragging an element close to canvas edge should snap."""
+        ev = _FakeEvent()
+        # Select the element
+        self.select.on_press(QPointF(125, 115), ev)
+        self.select.on_release(QPointF(125, 115), ev)
+        assert self.canvas.selected_element is self.elem
+
+        # Drag it to near the left edge (left would be at 5)
+        self.select.on_press(QPointF(125, 115), ev)
+        # Move to x=30 (element left would be at 5, snap to 0)
+        self.select.on_move(QPointF(30, 115), ev)
+        # Element should have snapped
+        assert len(self.canvas._snap_guides) > 0
+        self.select.on_release(QPointF(30, 115), ev)
+        # Guides cleared after release
+        assert self.canvas._snap_guides == []
+
+    def test_snap_disabled_no_guides(self):
+        """With snap disabled, no guides should be generated."""
+        self.canvas.snap_enabled = False
+        ev = _FakeEvent()
+        self.select.on_press(QPointF(125, 115), ev)
+        self.select.on_release(QPointF(125, 115), ev)
+        self.select.on_press(QPointF(125, 115), ev)
+        self.select.on_move(QPointF(5, 115), ev)
+        assert self.canvas._snap_guides == []
+        self.select.on_release(QPointF(5, 115), ev)
+
+
+# ---------------------------------------------------------------------------
+# 19. Side panel animation
+# ---------------------------------------------------------------------------
+
+class TestSidePanelAnimation:
+    """Tests that side panel fade animation objects exist."""
+
+    def test_panel_has_fade_animation(self):
+        panel = SidePanel()
+        assert hasattr(panel, '_fade_anim')
+        assert hasattr(panel, '_fade_target_visible')
+
+    def test_panel_fade_anim_duration(self):
+        panel = SidePanel()
+        assert panel._fade_anim.duration() == 150
+
+
+# ---------------------------------------------------------------------------
+# 20. History (undo/redo) edge cases
+# ---------------------------------------------------------------------------
+
+class TestHistoryEdgeCases:
+    def test_undo_empty_stack(self):
+        from paparaz.core.history import HistoryManager
+        h = HistoryManager()
+        assert h.can_undo is False
+        assert h.undo() is False
+
+    def test_redo_empty_stack(self):
+        from paparaz.core.history import HistoryManager
+        h = HistoryManager()
+        assert h.can_redo is False
+        assert h.redo() is False
+
+    def test_record_and_undo(self):
+        from paparaz.core.history import HistoryManager, Command
+        h = HistoryManager()
+        state = {"val": 1}
+        def do_it(): state["val"] = 2
+        def undo_it(): state["val"] = 1
+        do_it()
+        h.record(Command("test", do_it, undo_it))
+        assert state["val"] == 2
+        h.undo()
+        assert state["val"] == 1
+        h.redo()
+        assert state["val"] == 2
+
+    def test_new_action_clears_redo(self):
+        from paparaz.core.history import HistoryManager, Command
+        h = HistoryManager()
+        state = {"val": 0}
+        h.record(Command("a", lambda: None, lambda: None))
+        h.record(Command("b", lambda: None, lambda: None))
+        h.undo()
+        assert h.can_redo is True
+        h.record(Command("c", lambda: None, lambda: None))
+        assert h.can_redo is False
+
+
+# ---------------------------------------------------------------------------
+# 21. Filename pattern module
+# ---------------------------------------------------------------------------
+
+class TestFilenamePattern:
+    def test_basic_pattern(self):
+        from paparaz.core.filename_pattern import resolve
+        result = resolve("{yyyy}-{MM}-{dd}")
+        assert len(result) == 10  # e.g. "2026-04-01"
+        assert result[4] == "-"
+
+    def test_counter_token(self):
+        from paparaz.core.filename_pattern import resolve
+        result = resolve("shot_{n}", counter=42)
+        assert "42" in result
+
+    def test_counter_padded(self):
+        from paparaz.core.filename_pattern import resolve
+        result = resolve("shot_{n:4}", counter=7)
+        assert result == "shot_0007"
+
+    def test_dimensions_token(self):
+        from paparaz.core.filename_pattern import resolve
+        result = resolve("{w}x{h}", width=1920, height=1080)
+        assert result == "1920x1080"
+
+    def test_preview_returns_string(self):
+        from paparaz.core.filename_pattern import preview
+        result = preview("{yyyy}-{MM}-{dd}_{HH}-{mm}-{ss}")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_empty_pattern_returns_fallback(self):
+        from paparaz.core.filename_pattern import resolve
+        result = resolve("")
+        assert isinstance(result, str)
+        assert len(result) > 0  # empty pattern returns a fallback
+
+    def test_literal_text(self):
+        from paparaz.core.filename_pattern import resolve
+        result = resolve("screenshot")
+        assert result == "screenshot"
+
+    def test_host_token(self):
+        from paparaz.core.filename_pattern import resolve
+        import platform
+        result = resolve("{host}")
+        assert result.lower() == platform.node().lower()
+
+
+# ---------------------------------------------------------------------------
+# 22. Element rotation and geometry
+# ---------------------------------------------------------------------------
+
+class TestElementRotation:
+    def test_rotate_point_360_returns_original(self):
+        from paparaz.core.elements import _rotate_point
+        pt = QPointF(100, 50)
+        center = QPointF(75, 75)
+        rotated = _rotate_point(pt, center, 360)
+        assert rotated.x() == pytest.approx(pt.x(), abs=0.01)
+        assert rotated.y() == pytest.approx(pt.y(), abs=0.01)
+
+    def test_rotate_point_180(self):
+        from paparaz.core.elements import _rotate_point
+        pt = QPointF(100, 50)
+        center = QPointF(75, 75)
+        rotated = _rotate_point(pt, center, 180)
+        assert rotated.x() == pytest.approx(50, abs=0.01)
+        assert rotated.y() == pytest.approx(100, abs=0.01)
+
+    def test_rotated_element_contains_center(self):
+        elem = RectElement(QRectF(50, 50, 100, 80), filled=True, style=ElementStyle())
+        elem.rotation = 45
+        # Center should still be inside
+        center = QPointF(100, 90)
+        assert elem.contains_point(center)
+
+    def test_handle_at_detects_corners(self):
+        elem = RectElement(QRectF(100, 100, 200, 150), filled=True, style=ElementStyle())
+        elem.selected = True
+        # Top-left corner handle
+        handle = elem.handle_at(QPointF(100, 100))
+        assert handle is not None
+
+    def test_handle_at_returns_none_for_center(self):
+        elem = RectElement(QRectF(100, 100, 200, 150), filled=True, style=ElementStyle())
+        elem.selected = True
+        handle = elem.handle_at(QPointF(200, 175))  # center
+        assert handle is None

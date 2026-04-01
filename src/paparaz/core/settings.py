@@ -65,6 +65,10 @@ class AppSettings:
     auto_save: bool = False        # True = save silently, False = show dialog
     # Recent colors (up to 16, hex strings)
     recent_colors: list = field(default_factory=list)
+    # Behavior
+    hide_editor_before_capture: bool = True
+    confirm_close_unsaved: bool = True
+    canvas_background: str = "dark"          # "dark" | "checkerboard" | hex color e.g. "#ffffff"
 
 
 class SettingsManager:
@@ -107,7 +111,8 @@ class SettingsManager:
                    "shadow_default_blur_x", "shadow_default_blur_y",
                    "auto_check_updates",
                    "filename_pattern", "subfolder_pattern",
-                   "save_counter", "auto_save", "recent_colors"):
+                   "save_counter", "auto_save", "recent_colors",
+                   "hide_editor_before_capture", "confirm_close_unsaved", "canvas_background"):
             if k in data:
                 setattr(self.settings, k, data[k])
         # Backward compatibility: migrate old single blur field to both axes

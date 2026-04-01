@@ -51,6 +51,7 @@ class AnnotationCanvas(QWidget):
     def __init__(self, background: QPixmap, parent=None):
         super().__init__(parent)
         self._background = background
+        self._canvas_bg: str = "dark"   # "dark" | "checkerboard" | "system" | hex color
         self.elements: list[AnnotationElement] = []
         self._preview_element: Optional[AnnotationElement] = None
         self.selected_element: Optional[AnnotationElement] = None
@@ -143,6 +144,31 @@ class AnnotationCanvas(QWidget):
             if elem in self.elements:
                 setattr(elem.style.shadow, attr, old_val); self.update()
         self.history.record(Command(key, do, undo), f"{key}_{id(elem)}")
+
+    def set_canvas_background(self, bg: str):
+        """Set the canvas surround color. 'dark'=default, 'checkerboard', 'system', or a hex color."""
+        self._canvas_bg = bg
+        self.update()
+
+    def _paint_canvas_background(self, painter: QPainter):
+        """Fill the area behind/around the screenshot with the configured background."""
+        bg = self._canvas_bg
+        r = self.rect()
+        if bg == "checkerboard":
+            cs = 16
+            light = QColor(55, 55, 55)
+            dark_c = QColor(38, 38, 38)
+            for row in range(0, r.height(), cs):
+                for col in range(0, r.width(), cs):
+                    painter.fillRect(
+                        col, row, cs, cs,
+                        light if (row // cs + col // cs) % 2 == 0 else dark_c
+                    )
+        elif bg == "system":
+            painter.fillRect(r, self.palette().color(self.backgroundRole()))
+        elif bg not in ("dark", ""):
+            painter.fillRect(r, QColor(bg))
+        # "dark" — Qt paints the widget palette background automatically
 
     def set_foreground_color(self, color: str):
         self._fg_color = color
@@ -508,6 +534,9 @@ class AnnotationCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        # Canvas background fill (area around/behind the screenshot when zoomed out)
+        self._paint_canvas_background(painter)
 
         painter.translate(self._pan_offset)
         painter.scale(self._zoom, self._zoom)

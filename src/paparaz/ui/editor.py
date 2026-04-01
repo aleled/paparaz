@@ -247,6 +247,8 @@ class EditorWindow(QWidget):
         # Apply saved app theme
         if self._settings_manager:
             self.apply_app_theme(self._settings_manager.settings.app_theme)
+            canvas_bg = getattr(self._settings_manager.settings, 'canvas_background', 'dark')
+            self._canvas.set_canvas_background(canvas_bg)
 
         # Auto-copy the raw capture to clipboard when the editor opens
         copy_to_clipboard(screenshot)
@@ -564,6 +566,10 @@ class EditorWindow(QWidget):
         # Apply background color to editor root
         bg = theme["bg1"]
         self.setStyleSheet(f"QWidget#editorRoot {{ background: {bg}; }}")
+        # Apply canvas background setting
+        if hasattr(self, '_canvas') and hasattr(self, '_settings_manager') and self._settings_manager:
+            canvas_bg = getattr(self._settings_manager.settings, 'canvas_background', 'dark')
+            self._canvas.set_canvas_background(canvas_bg)
 
     def _show_theme_presets(self):
         from paparaz.ui.theme_presets import ThemePresetPopup
@@ -827,6 +833,11 @@ class EditorWindow(QWidget):
 
     def _confirm_close(self):
         if not self._canvas.elements and not self._canvas._preview_element:
+            self.close()
+            return
+        # Respect the "confirm before closing" setting
+        _sm = getattr(self, '_settings_manager', None)
+        if _sm and not getattr(_sm.settings, 'confirm_close_unsaved', True):
             self.close()
             return
         msg = QMessageBox(self)

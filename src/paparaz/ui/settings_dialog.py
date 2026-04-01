@@ -8,10 +8,11 @@ from PySide6.QtWidgets import (
     QComboBox, QPushButton, QFileDialog,
     QColorDialog, QGroupBox, QScrollArea, QFrame,
     QListWidget, QListWidgetItem, QStackedWidget, QSizePolicy,
-    QToolButton, QSlider,
+    QToolButton, QSlider, QFontComboBox, QButtonGroup, QRadioButton,
 )
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QColor, QFont, QIcon, QPixmap, QPainter, QPen, QBrush
+from PySide6.QtGui import QColor, QFont, QIcon, QPixmap, QPainter, QPen, QBrush, QDesktopServices
+from PySide6.QtCore import QUrl
 
 from paparaz.core.settings import SettingsManager
 from paparaz.ui.icons import combo_arrow_css
@@ -292,6 +293,7 @@ class SettingsDialog(QDialog):
             ("#0088dd", "Capture",    "Screenshots & save"),
             ("#9922cc", "Appearance", "Theme & icons"),
             ("#22aa66", "Tools",      "Defaults & memory"),
+            ("#cc6600", "Behavior",   "Window & editor"),
             ("#dd7700", "Shortcuts",  "Keyboard bindings"),
             ("#dd3366", "Presets",    "Style presets"),
             ("#0099bb", "Updates",    "Version & startup"),
@@ -311,6 +313,7 @@ class SettingsDialog(QDialog):
             self._build_capture(),
             self._build_appearance(),
             self._build_tools(),
+            self._build_behavior(),
             self._build_shortcuts(),
             self._build_presets(),
             self._build_updates(),
@@ -600,7 +603,8 @@ class SettingsDialog(QDialog):
         lw_row.addWidget(self._line_width)
         form2.addRow("Line width:", lw_row)
 
-        self._font_family = QLineEdit(td.font_family)
+        self._font_family = QFontComboBox()
+        self._font_family.setCurrentFont(QFont(td.font_family))
         form2.addRow("Font family:", self._font_family)
 
         fs_sl, self._font_size = _slider_row(6, 120, td.font_size, " pt")
@@ -626,12 +630,19 @@ class SettingsDialog(QDialog):
         self._sh_offset_y.setSuffix(" px")
         form3.addRow("Offset Y:", self._sh_offset_y)
 
-        self._sh_blur = QDoubleSpinBox()
-        self._sh_blur.setRange(0, 50)
-        self._sh_blur.setSingleStep(0.5)
-        self._sh_blur.setValue(getattr(self._s, 'shadow_default_blur', 5.0))
-        self._sh_blur.setSuffix(" px")
-        form3.addRow("Blur radius:", self._sh_blur)
+        self._sh_blur_x = QDoubleSpinBox()
+        self._sh_blur_x.setRange(0, 50)
+        self._sh_blur_x.setSingleStep(0.5)
+        self._sh_blur_x.setValue(getattr(self._s, 'shadow_default_blur_x', 5.0))
+        self._sh_blur_x.setSuffix(" px")
+        form3.addRow("Blur X:", self._sh_blur_x)
+
+        self._sh_blur_y = QDoubleSpinBox()
+        self._sh_blur_y.setRange(0, 50)
+        self._sh_blur_y.setSingleStep(0.5)
+        self._sh_blur_y.setValue(getattr(self._s, 'shadow_default_blur_y', 5.0))
+        self._sh_blur_y.setSuffix(" px")
+        form3.addRow("Blur Y:", self._sh_blur_y)
         vbox.addWidget(grp3)
 
         # Tool memory
@@ -653,6 +664,109 @@ class SettingsDialog(QDialog):
         vbox.addStretch()
         return _scroll(inner)
 
+    def _build_behavior(self) -> QWidget:
+        inner, vbox = _page()
+
+        vbox.addWidget(QLabel("Behavior", objectName="heading"))
+        vbox.addSpacing(4)
+        vbox.addWidget(QLabel("Control how the editor and capture flow behave.", objectName="sub"))
+
+        # ── Capture behavior ──────────────────────────────────────────────────
+        grp, form = _grp("Capture")
+
+        self._hide_before_capture = QPushButton(
+            "Hide editor window before taking a new screenshot")
+        self._hide_before_capture.setObjectName("toggleSetting")
+        self._hide_before_capture.setCheckable(True)
+        self._hide_before_capture.setChecked(
+            getattr(self._s, 'hide_editor_before_capture', True))
+        self._hide_before_capture.setToolTip(
+            "When you trigger a new capture, the editor hides first so it doesn't appear in the screenshot.")
+        form.addRow("", self._hide_before_capture)
+        vbox.addWidget(grp)
+
+        # ── Editor behavior ───────────────────────────────────────────────────
+        grp2, form2 = _grp("Editor")
+
+        self._confirm_close = QPushButton(
+            "Ask before closing with unsaved annotations")
+        self._confirm_close.setObjectName("toggleSetting")
+        self._confirm_close.setCheckable(True)
+        self._confirm_close.setChecked(
+            getattr(self._s, 'confirm_close_unsaved', True))
+        self._confirm_close.setToolTip(
+            "Show a confirmation dialog when closing the editor with unannotated/unsaved work.")
+        form2.addRow("", self._confirm_close)
+        vbox.addWidget(grp2)
+
+        # ── Canvas background ─────────────────────────────────────────────────
+        grp3, form3 = _grp("Canvas Background")
+        note3 = QLabel("Color shown around the captured image when zoomed out.")
+        note3.setObjectName("sub")
+        note3.setWordWrap(True)
+        form3.addRow("", note3)
+
+        self._canvas_bg = getattr(self._s, 'canvas_background', 'dark')
+        self._bg_radio_grp = QButtonGroup(self)
+
+        _bg_options = [
+            ("dark",          "Dark  (default)"),
+            ("checkerboard",  "Checkerboard  (transparency grid)"),
+            ("system",        "System window color"),
+        ]
+        for value, label in _bg_options:
+            rb = QRadioButton(label)
+            rb.setStyleSheet("color: #ccc; font-size: 12px;")
+            rb.setChecked(self._canvas_bg == value)
+            rb.toggled.connect(lambda checked, v=value: self._on_canvas_bg_changed(v) if checked else None)
+            self._bg_radio_grp.addButton(rb)
+            form3.addRow("", rb)
+
+        # Custom color row
+        custom_row = QHBoxLayout()
+        self._custom_bg_rb = QRadioButton("Custom color:")
+        self._custom_bg_rb.setStyleSheet("color: #ccc; font-size: 12px;")
+        is_custom = self._canvas_bg not in ('dark', 'checkerboard', 'system')
+        self._custom_bg_rb.setChecked(is_custom)
+        self._bg_radio_grp.addButton(self._custom_bg_rb)
+        custom_row.addWidget(self._custom_bg_rb)
+
+        self._custom_bg_btn = QPushButton()
+        self._custom_bg_btn.setObjectName("colorBtn")
+        custom_color = self._canvas_bg if is_custom else "#2a2a3e"
+        self._custom_bg_btn.setStyleSheet(f"background:{custom_color};")
+        self._custom_bg_btn.setEnabled(is_custom)
+        self._custom_bg_btn.clicked.connect(self._pick_canvas_bg_color)
+        custom_row.addWidget(self._custom_bg_btn)
+        custom_row.addStretch()
+
+        self._custom_bg_rb.toggled.connect(
+            lambda checked: self._on_canvas_bg_changed(
+                getattr(self, '_custom_bg_color', '#2a2a3e')) if checked else None)
+        self._custom_bg_rb.toggled.connect(self._custom_bg_btn.setEnabled)
+        self._custom_bg_color = custom_color
+
+        form3.addRow("", self._wrap_row(custom_row))
+        vbox.addWidget(grp3)
+
+        vbox.addStretch()
+        return _scroll(inner)
+
+    def _wrap_row(self, layout: QHBoxLayout) -> QWidget:
+        w = QWidget()
+        w.setLayout(layout)
+        return w
+
+    def _on_canvas_bg_changed(self, value: str):
+        self._canvas_bg = value
+
+    def _pick_canvas_bg_color(self):
+        c = QColorDialog.getColor(QColor(self._custom_bg_color), self, "Canvas Background Color")
+        if c.isValid():
+            self._custom_bg_color = c.name()
+            self._custom_bg_btn.setStyleSheet(f"background:{self._custom_bg_color};")
+            self._canvas_bg = self._custom_bg_color
+
     def _build_shortcuts(self) -> QWidget:
         inner, vbox = _page()
 
@@ -671,6 +785,7 @@ class SettingsDialog(QDialog):
             ("save_as",        "Save As",            "Ctrl+Shift+S"),
             ("copy_clipboard", "Copy to clipboard",  "Ctrl+C"),
             ("delete",         "Delete selected",    "Delete"),
+            ("select_all",     "Select all",         "Ctrl+A"),
         ]:
             field = QLineEdit(getattr(hk, name, ""))
             field.setPlaceholderText(hint)
@@ -816,6 +931,33 @@ class SettingsDialog(QDialog):
 
         from paparaz.utils.updater import __version__
         vbox.addWidget(QLabel(f"Version {__version__}  ·  Screen Capture & Annotation for Windows"))
+        vbox.addSpacing(16)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+        website_btn = QPushButton("🌐  Website")
+        website_btn.setObjectName("secondary")
+        website_btn.setFixedHeight(34)
+        website_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://github.com/aleled/paparaz")))
+        btn_row.addWidget(website_btn)
+
+        updates_btn = QPushButton("🔄  Check for Updates")
+        updates_btn.setFixedHeight(34)
+        updates_btn.clicked.connect(self._check_now)
+        btn_row.addWidget(updates_btn)
+
+        issues_btn = QPushButton("🐛  Report Issue")
+        issues_btn.setObjectName("secondary")
+        issues_btn.setFixedHeight(34)
+        issues_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl("https://github.com/aleled/paparaz/issues")))
+        btn_row.addWidget(issues_btn)
+        btn_row.addStretch()
+
+        btn_row_w = QWidget()
+        btn_row_w.setLayout(btn_row)
+        vbox.addWidget(btn_row_w)
         vbox.addSpacing(12)
         vbox.addWidget(_sep())
         vbox.addSpacing(8)
@@ -941,11 +1083,17 @@ class SettingsDialog(QDialog):
         s.tool_defaults.foreground_color = self._fg_color
         s.tool_defaults.background_color = self._bg_color
         s.tool_defaults.line_width       = self._line_width.value()
-        s.tool_defaults.font_family      = self._font_family.text()
+        s.tool_defaults.font_family      = self._font_family.currentFont().family()
         s.tool_defaults.font_size        = self._font_size.value()
         s.shadow_default_offset_x        = self._sh_offset_x.value()
         s.shadow_default_offset_y        = self._sh_offset_y.value()
-        s.shadow_default_blur            = self._sh_blur.value()
+        s.shadow_default_blur_x          = self._sh_blur_x.value()
+        s.shadow_default_blur_y          = self._sh_blur_y.value()
+
+        # Behavior
+        s.hide_editor_before_capture = self._hide_before_capture.isChecked()
+        s.confirm_close_unsaved      = self._confirm_close.isChecked()
+        s.canvas_background          = self._canvas_bg
 
         # Shortcuts
         for name, field in self._hk_fields.items():

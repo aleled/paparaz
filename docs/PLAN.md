@@ -144,6 +144,40 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Project file format (.papraz) to save/load edits with full object state
 - [ ] Auto-save / crash recovery
 
+### Settings — Behavior & Capture (PicPick-inspired gaps)
+- [ ] Multiple capture hotkeys: full-screen (instant, no overlay), active window, fixed region, repeat last
+- [ ] "Hide editor before capturing" — hide editor window so it doesn't appear in the new screenshot
+- [ ] "Confirm before closing with unsaved changes" — configurable close guard
+- [ ] "Exit app when closing editor" — vs keep running in tray (currently hardcoded: stay in tray)
+- [ ] Remember editor window position and size across sessions
+- [ ] Include mouse cursor in captures — embed pointer in screenshot (on/off)
+- [ ] Capture sound — audible shutter feedback (on/off, custom sound file)
+
+### Settings — Output
+- [ ] PNG compression level slider (0=fast/large .. 9=slow/small)
+- [ ] Auto-copy to clipboard after every save (silent, no dialog)
+- [ ] Open saved file in external app option
+
+### Settings — Editor / Panel
+- [ ] Default zoom level on open: Fit / 100% / Fill / Remember last
+- [ ] Starting properties panel mode: Auto / Pinned / Hidden (currently always auto)
+- [ ] Canvas background color: dark / system / checkerboard / custom solid color
+
+### Settings — Hotkeys UX Overhaul
+- [ ] Modifier checkboxes (Shift/Ctrl/Alt) + key dropdown per action (vs freeform text input)
+- [ ] Separate section for global capture hotkeys vs in-editor shortcuts
+
+### Settings — About page
+- [ ] Action buttons: Website, Check for Updates, Report Issue (GitHub link)
+- [ ] License / credits section
+
+### Settings — Bugs to fix (from SETTINGS_PLAN.md)
+- [ ] Fix shadow blur display: currently shows single spinbox; needs separate Blur X / Blur Y widgets
+- [ ] Fix font family: QLineEdit → QFontComboBox
+- [ ] Add `select_all` hotkey to Shortcuts page
+- [ ] Recent colors view + Clear button in Appearance page
+- [ ] Filename live preview (rendered actual filename below pattern field, accent colored)
+
 ---
 
 ## Status Legend

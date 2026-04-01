@@ -1,7 +1,7 @@
 # Settings Dialog — Overhaul Plan
 
 **Status**: Planning
-**Last updated**: 2026-03-31
+**Last updated**: 2026-04-01
 **Scope**: Audit of all configurable behaviors vs. what is actually exposed in the settings UI.
 
 ---
@@ -129,6 +129,29 @@ paste_offset: int = 20
 tray_notification_ms: int = 3000
 tray_dbl_click_action: str = "capture"   # "capture" | "last" | "menu"
 save_behavior: str = "ask"               # "ask" | "close" | "stay"
+hide_editor_before_capture: bool = True  # hide editor window when triggering a new capture
+confirm_close_unsaved: bool = True       # warn before closing an annotation with unsaved changes
+exit_on_editor_close: bool = False       # quit app entirely when editor is closed
+remember_window_geometry: bool = True    # restore last editor position + size
+
+# Capture
+capture_fullscreen_hotkey: str = ""      # dedicated full-screen capture shortcut
+capture_active_window_hotkey: str = ""   # capture window under cursor (no region drag)
+capture_fixed_region_hotkey: str = ""    # re-capture last used region rectangle
+repeat_last_capture_hotkey: str = ""     # shortcut to repeat the previous capture type
+include_mouse_cursor: bool = False       # embed mouse pointer in the captured image
+max_recent: int = 10                     # already in settings.py — just needs UI
+
+# Output
+png_compression: int = 6                # 0=fast/large .. 9=slow/small
+auto_copy_after_save: bool = False       # silently copy to clipboard after every save
+open_in_external_after_save: str = ""   # path to external app, "" = disabled
+play_capture_sound: bool = False         # auditory shutter feedback on capture
+
+# Editor
+default_zoom: str = "fit"               # "fit" | "100" | "fill" | "last"
+starting_panel_mode: str = "auto"       # "auto" | "pinned" | "hidden"
+canvas_background: str = "dark"         # "dark" | "system" | "checkerboard" | hex color
 
 # Tools
 highlight_default_color: str = "#FFFF00"
@@ -139,10 +162,40 @@ default_blur_pixels: int = 10
 
 # Appearance
 selection_handle_size: int = 7           # px, 4–14
-
-# Capture
-max_recent: int = 10                     # already in settings.py — just needs UI
 ```
+
+---
+
+## PicPick-Inspired UI Patterns to Adopt
+
+### File Name page — Live Preview (priority: HIGH)
+PicPick renders the actual filename below the pattern field in accent color. Our `FilenamePatternWidget`
+should show a live preview line updated on every keypress — e.g. `2026-04-01_08-24-55.png`
+
+### Editor / Behavior page (priority: HIGH)
+PicPick's "Editor" page groups boolean behaviors as indented checkboxes under a header.
+For PapaRaZ, consolidate into a **Behavior** page with toggle pills:
+- "Hide editor window before capturing a new screenshot"
+- "Ask before closing with unsaved changes"
+- "Exit app entirely when closing the editor"
+- "Remember editor window position and size"
+
+### Hotkeys — Modifier checkboxes + key dropdown (priority: MEDIUM)
+PicPick shows each action as:  `[□ Shift] [□ Ctrl] [□ Alt]  [Key dropdown▼]`
+More discoverable than the current freeform text input. Rebuild Shortcuts page
+as a table widget with per-row modifier checkboxes + QComboBox key selector.
+
+### Multiple capture mode hotkeys (priority: MEDIUM)
+PicPick gives each capture mode its own hotkey entry:
+- Capture Full-screen (instant, no overlay)
+- Capture Active Window (window under cursor)
+- Capture Fixed Region (last-used rectangle)
+- Repeat Last Capture (same mode + parameters)
+PapaRaZ currently has only one global PrintScreen hotkey for region capture.
+
+### About page — Action buttons (priority: LOW)
+Add Website / Check for Updates / Report Issue buttons to the About page
+(currently only shows version text).
 
 ---
 

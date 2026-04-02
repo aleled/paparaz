@@ -99,5 +99,7 @@ Comprehensive QA testing covering 10+ test types (unit, functional, UI/UX, smoke
 
 ## Remaining Backlog
 
-1. **ISSUE-8**: Keyboard canvas navigation — accessibility improvement (future feature)
-2. **ISSUE-7**: Manual visual QA for rotated slices — verification task
+1. **ISSUE-9**: Error dialogs appear behind always-on-top windows — OS error popups (e.g., "Unsupported 16-Bit Application") render behind PapaRaZ's always-on-top editor/installer, making them invisible. Investigate using `Qt.WindowStaysOnTopHint` management or bringing error dialogs to front.
+2. **ISSUE-10**: Platform compatibility — app is Windows-only (Win32 capture, winrt OCR, registry auto-start). Consider cross-platform abstractions or at minimum document platform requirements clearly. Add platform detection guards for graceful failures on unsupported OS.
+3. **ISSUE-8**: Keyboard canvas navigation — accessibility improvement (future feature)
+4. **ISSUE-7**: Manual visual QA for rotated slices — verification task

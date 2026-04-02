@@ -104,6 +104,8 @@ class AnnotationCanvas(QWidget):
         pass
 
     def set_tool(self, tool: BaseTool):
+        if tool is None:
+            return
         if self._tool:
             self._tool.on_deactivate()
         self._tool = tool
@@ -912,6 +914,8 @@ class AnnotationCanvas(QWidget):
 
     def copy_element(self, elem: AnnotationElement):
         """Store a clone of elem in the internal element clipboard."""
+        if elem is None:
+            return
         self._element_clipboard = _clone_element(elem)
 
     def paste_element(self):

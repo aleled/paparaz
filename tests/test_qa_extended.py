@@ -33,7 +33,8 @@ from paparaz.core.elements import (
     AnnotationElement, TextElement, NumberElement, MaskElement, StampElement,
     RectElement, EllipseElement, PenElement, BrushElement,
     LineElement, ArrowElement, ImageElement, ElementStyle, Shadow,
-    MagnifierElement, ElementType,
+    MagnifierElement, ElementType, CurvedArrowElement, HighlightElement,
+    element_from_dict,
 )
 from paparaz.core.history import HistoryManager, Command
 from paparaz.core.settings import AppSettings, SettingsManager, ToolDefaults
@@ -428,11 +429,13 @@ class TestNegativeErrorHandling:
         for _ in range(10):
             c.history.redo()
 
-    def test_set_tool_none_crashes(self):
-        """FINDING: set_tool(None) crashes — no guard against None tool."""
+    def test_set_tool_none_is_noop(self):
+        """set_tool(None) is now guarded — no-op instead of crash."""
         c = make_canvas()
-        with pytest.raises((AttributeError, TypeError)):
-            c.set_tool(None)
+        tool = RectangleTool(c)
+        c.set_tool(tool)
+        c.set_tool(None)  # should not crash
+        assert c._tool is tool  # tool unchanged
 
     def test_crop_tool_apply_without_selection(self):
         c = make_canvas()
@@ -465,9 +468,10 @@ class TestNegativeErrorHandling:
 
     def test_invalid_color_string_in_style(self):
         s = ElementStyle(foreground_color="not-a-color")
-        # QColor will handle invalid strings gracefully
+        # Color validation now falls back to default
+        assert s.foreground_color == "#FF0000"
         c = QColor(s.foreground_color)
-        assert c.isValid() is False
+        assert c.isValid() is True
 
     def test_recovery_module_missing_dir(self, monkeypatch):
         from paparaz.core import recovery
@@ -643,17 +647,15 @@ class TestDataIntegritySerialization:
             parsed = json.loads(serialized)
             assert parsed["type"] == d["type"]
 
-    def test_no_from_dict_methods_exist(self):
-        """Document: elements have to_dict but no from_dict — one-way serialization."""
+    def test_all_elements_have_from_dict(self):
+        """All element types must have from_dict() for deserialization."""
         classes = [
             PenElement, BrushElement, LineElement, ArrowElement,
             RectElement, EllipseElement, TextElement, NumberElement,
             MaskElement, ImageElement, StampElement, MagnifierElement,
         ]
         for cls in classes:
-            assert not hasattr(cls, "from_dict"), (
-                f"{cls.__name__} has from_dict — update tests if deserialization was added"
-            )
+            assert hasattr(cls, "from_dict"), f"{cls.__name__} missing from_dict"
 
     def test_element_id_uniqueness(self):
         """Each element should get a unique ID."""
@@ -1327,3 +1329,258 @@ class TestRegionSelector:
         rs = self._make()
         flags = rs.windowFlags()
         assert flags & Qt.WindowType.FramelessWindowHint
+
+
+# ###########################################################################
+# FIX VERIFICATION: from_dict() roundtrip tests
+# ###########################################################################
+
+class TestFromDictRoundtrip:
+    """Verify to_dict → from_dict roundtrip for all element types."""
+
+    def test_rect_roundtrip(self):
+        s = ElementStyle(foreground_color="#00FF00", line_width=5)
+        orig = RectElement(QRectF(10, 20, 100, 50), filled=True, style=s)
+        orig.rotation = 30.0
+        d = orig.to_dict()
+        restored = RectElement.from_dict(d)
+        assert restored.rect == orig.rect
+        assert restored.filled is True
+        assert restored.rotation == 30.0
+        assert restored.style.foreground_color.lower() == "#00ff00"
+        assert restored.style.line_width == 5
+
+    def test_ellipse_roundtrip(self):
+        orig = EllipseElement(QRectF(5, 5, 80, 60), filled=False)
+        d = orig.to_dict()
+        restored = EllipseElement.from_dict(d)
+        assert restored.rect == orig.rect
+        assert restored.filled is False
+
+    def test_line_roundtrip(self):
+        orig = LineElement(QPointF(10, 20), QPointF(100, 200))
+        d = orig.to_dict()
+        restored = LineElement.from_dict(d)
+        assert restored.start == orig.start
+        assert restored.end == orig.end
+
+    def test_arrow_roundtrip(self):
+        orig = ArrowElement(QPointF(0, 0), QPointF(50, 50))
+        d = orig.to_dict()
+        restored = ArrowElement.from_dict(d)
+        assert restored.start == orig.start
+        assert restored.element_type == ElementType.ARROW
+
+    def test_pen_roundtrip(self):
+        orig = PenElement()
+        orig.add_point(QPointF(0, 0))
+        orig.add_point(QPointF(10, 10))
+        orig.add_point(QPointF(20, 5))
+        d = orig.to_dict()
+        restored = PenElement.from_dict(d)
+        assert len(restored.points) == 3
+        assert restored.points[0] == QPointF(0, 0)
+
+    def test_brush_roundtrip(self):
+        orig = BrushElement()
+        orig.add_point(QPointF(5, 5))
+        orig.add_point(QPointF(15, 15))
+        d = orig.to_dict()
+        restored = BrushElement.from_dict(d)
+        assert len(restored.points) == 2
+        assert restored.element_type == ElementType.BRUSH
+
+    def test_highlight_roundtrip(self):
+        orig = HighlightElement()
+        orig.add_point(QPointF(1, 1))
+        orig.add_point(QPointF(50, 50))
+        d = orig.to_dict()
+        restored = HighlightElement.from_dict(d)
+        assert len(restored.points) == 2
+        assert restored.element_type == ElementType.HIGHLIGHT
+
+    def test_curved_arrow_roundtrip(self):
+        orig = CurvedArrowElement(
+            QPointF(10, 10), QPointF(100, 100), QPointF(50, 0)
+        )
+        d = orig.to_dict()
+        restored = CurvedArrowElement.from_dict(d)
+        assert restored.start == orig.start
+        assert restored.end == orig.end
+        assert restored.control == orig.control
+
+    def test_text_roundtrip(self):
+        orig = TextElement(QPointF(10, 10), "Hello World")
+        orig.bold = True
+        orig.italic = True
+        orig.bg_enabled = True
+        orig.bg_color = "#00FF00"
+        d = orig.to_dict()
+        restored = TextElement.from_dict(d)
+        assert restored.text == "Hello World"
+        assert restored.bold is True
+        assert restored.italic is True
+        assert restored.bg_enabled is True
+        assert restored.bg_color == "#00FF00"
+
+    def test_number_roundtrip(self):
+        orig = NumberElement(QPointF(50, 50), 42, size=32, text_color="#FFFFFF")
+        d = orig.to_dict()
+        restored = NumberElement.from_dict(d)
+        assert restored.number == 42
+        assert restored.size == 32
+        assert restored.text_color == "#FFFFFF"
+
+    def test_mask_roundtrip(self):
+        orig = MaskElement(QRectF(10, 20, 100, 50), pixel_size=15)
+        d = orig.to_dict()
+        restored = MaskElement.from_dict(d)
+        assert restored.rect == orig.rect
+        assert restored.pixel_size == 15
+
+    def test_stamp_roundtrip(self):
+        orig = StampElement("star", QPointF(50, 50), 32)
+        d = orig.to_dict()
+        restored = StampElement.from_dict(d)
+        assert restored.stamp_id == "star"
+
+    def test_image_roundtrip_preserves_rect(self):
+        pix = QPixmap(100, 80)
+        pix.fill(Qt.GlobalColor.red)
+        orig = ImageElement(pix, QPointF(10, 20))
+        d = orig.to_dict()
+        restored = ImageElement.from_dict(d)
+        assert restored.rect == orig.rect
+        # Pixmap is lost (not serializable) but rect is preserved
+
+    def test_magnifier_roundtrip(self):
+        orig = MagnifierElement(
+            QRectF(10, 10, 50, 50), QRectF(100, 100, 100, 100), zoom=3.0
+        )
+        d = orig.to_dict()
+        restored = MagnifierElement.from_dict(d)
+        assert restored.source_rect == orig.source_rect
+        assert restored.display_rect == orig.display_rect
+        assert restored.zoom == 3.0
+
+    def test_style_roundtrip(self):
+        s = ElementStyle(
+            foreground_color="#123456", background_color="#ABCDEF",
+            line_width=5, opacity=0.7, font_family="Courier",
+            font_size=18, cap_style="square", join_style="bevel",
+            dash_pattern="dash",
+            shadow=Shadow(enabled=True, offset_x=4, offset_y=4, color="#333333"),
+        )
+        orig = RectElement(QRectF(0, 0, 10, 10), filled=True, style=s)
+        d = orig.to_dict()
+        restored = RectElement.from_dict(d)
+        rs = restored.style
+        assert rs.foreground_color == "#123456"
+        assert rs.background_color.lower() == "#abcdef"
+        assert rs.line_width == 5
+        assert rs.opacity == 0.7
+        assert rs.font_family == "Courier"
+        assert rs.font_size == 18
+        assert rs.shadow.enabled is True
+        assert rs.shadow.offset_x == 4
+
+    def test_visibility_roundtrip(self):
+        orig = RectElement(QRectF(0, 0, 10, 10), filled=True, style=ElementStyle())
+        orig.visible = False
+        d = orig.to_dict()
+        restored = RectElement.from_dict(d)
+        assert restored.visible is False
+
+    def test_element_from_dict_factory(self):
+        """element_from_dict() should reconstruct any element by type name."""
+        elements = [
+            RectElement(QRectF(0, 0, 50, 50), filled=True, style=ElementStyle()),
+            LineElement(QPointF(0, 0), QPointF(10, 10)),
+            TextElement(QPointF(0, 0), "test"),
+        ]
+        for orig in elements:
+            d = orig.to_dict()
+            restored = element_from_dict(d)
+            assert restored is not None
+            assert restored.element_type == orig.element_type
+
+    def test_element_from_dict_unknown_type(self):
+        d = {"type": "NONEXISTENT"}
+        assert element_from_dict(d) is None
+
+    def test_json_full_roundtrip(self):
+        """Serialize to JSON string, parse, reconstruct — full pipeline."""
+        orig = RectElement(QRectF(10, 20, 100, 50), filled=True,
+                           style=ElementStyle(foreground_color="#FF0000", line_width=3))
+        orig.rotation = 45.0
+        json_str = json.dumps(orig.to_dict())
+        parsed = json.loads(json_str)
+        restored = element_from_dict(parsed)
+        assert restored.rect == orig.rect
+        assert restored.filled is True
+        assert restored.rotation == 45.0
+        assert restored.style.foreground_color.lower() == "#ff0000"
+
+
+# ###########################################################################
+# FIX VERIFICATION: Guards, validation, eyedropper fallback
+# ###########################################################################
+
+class TestFixVerification:
+    """Tests verifying the recommended fixes work correctly."""
+
+    def test_set_tool_none_no_crash(self):
+        c = make_canvas()
+        c.set_tool(None)  # should be a no-op now, not crash
+
+    def test_copy_element_none_no_crash(self):
+        c = make_canvas()
+        c.copy_element(None)  # should be a no-op
+
+    def test_color_validation_valid(self):
+        s = ElementStyle(foreground_color="#00FF00")
+        assert s.foreground_color == "#00FF00"
+
+    def test_color_validation_invalid_falls_back(self):
+        s = ElementStyle(foreground_color="not-a-color")
+        assert s.foreground_color == "#FF0000"  # default
+
+    def test_color_validation_invalid_bg_falls_back(self):
+        s = ElementStyle(background_color="garbage")
+        assert s.background_color == "#FFFFFF"  # default
+
+    def test_color_validation_named_colors(self):
+        s = ElementStyle(foreground_color="red")
+        assert QColor(s.foreground_color).isValid()
+
+    def test_eyedropper_pixmap_fallback(self):
+        c = make_canvas()
+        # Fill background with a known color
+        from PySide6.QtGui import QPainter
+        p = QPainter(c._background)
+        p.fillRect(0, 0, 600, 400, QColor("#FF0000"))
+        p.end()
+        eye = EyedropperTool(c)
+        c.set_tool(eye)
+        # Use the pixmap fallback directly
+        color = eye._sample_color_from_pixmap(QPointF(50, 50))
+        assert color.red() == 255
+        assert color.green() == 0
+        assert color.blue() == 0
+
+    def test_eyedropper_pixmap_fallback_oob(self):
+        c = make_canvas()
+        eye = EyedropperTool(c)
+        c.set_tool(eye)
+        color = eye._sample_color_from_pixmap(QPointF(-10, -10))
+        # Out of bounds returns white
+        assert color == QColor(Qt.GlobalColor.white)
+
+    def test_history_depth_limit_exists(self):
+        c = make_canvas()
+        assert c.history._max_size == 200
+        for i in range(250):
+            c.history.execute(
+                Command(f"cmd_{i}", lambda: None, lambda: None)
+            )
+        assert len(c.history._undo_stack) <= 200

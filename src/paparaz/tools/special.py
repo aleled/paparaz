@@ -1358,15 +1358,32 @@ class EyedropperTool(BaseTool):
     # ── Colour sampling ─────────────────────────────────────────────────────
 
     def _sample_color(self, pos: QPointF) -> QColor:
-        """Sample the rendered canvas pixel at *pos* (widget coordinates)."""
-        # Grab from screen so we see the composed result (bg + all elements)
+        """Sample the rendered canvas pixel at *pos* (widget coordinates).
+
+        Tries screen grab first (sees composed result with all elements).
+        Falls back to reading the background pixmap directly when no screen
+        is available (headless / multi-monitor edge cases).
+        """
         global_pt = self.canvas.mapToGlobal(pos.toPoint())
         screen = QApplication.primaryScreen()
-        if screen is None:
+        if screen is not None:
+            pix = screen.grabWindow(0, global_pt.x(), global_pt.y(), 1, 1)
+            img = pix.toImage()
+            if img.width() > 0 and img.height() > 0:
+                return QColor(img.pixel(0, 0))
+        # Fallback: read from canvas background pixmap directly
+        return self._sample_color_from_pixmap(pos)
+
+    def _sample_color_from_pixmap(self, pos: QPointF) -> QColor:
+        """Read a pixel from the canvas background pixmap at canvas coords."""
+        bg = getattr(self.canvas, '_background', None)
+        if bg is None or bg.isNull():
             return QColor(Qt.GlobalColor.white)
-        pix = screen.grabWindow(0, global_pt.x(), global_pt.y(), 1, 1)
-        img = pix.toImage()
-        return QColor(img.pixel(0, 0))
+        x, y = int(pos.x()), int(pos.y())
+        if 0 <= x < bg.width() and 0 <= y < bg.height():
+            img = bg.toImage()
+            return QColor(img.pixel(x, y))
+        return QColor(Qt.GlobalColor.white)
 
     def _sample_area(self, pos: QPointF) -> QPixmap:
         """Grab a small area around *pos* for the loupe magnification."""
@@ -1374,11 +1391,18 @@ class EyedropperTool(BaseTool):
         d = r * 2 + 1
         global_pt = self.canvas.mapToGlobal(pos.toPoint())
         screen = QApplication.primaryScreen()
-        if screen is None:
-            pix = QPixmap(d, d)
-            pix.fill(Qt.GlobalColor.gray)
-            return pix
-        return screen.grabWindow(0, global_pt.x() - r, global_pt.y() - r, d, d)
+        if screen is not None:
+            pix = screen.grabWindow(0, global_pt.x() - r, global_pt.y() - r, d, d)
+            if not pix.isNull():
+                return pix
+        # Fallback: crop from background pixmap
+        bg = getattr(self.canvas, '_background', None)
+        if bg is not None and not bg.isNull():
+            x, y = int(pos.x()) - r, int(pos.y()) - r
+            return bg.copy(max(0, x), max(0, y), d, d)
+        pix = QPixmap(d, d)
+        pix.fill(Qt.GlobalColor.gray)
+        return pix
 
     # ── Hover paint (loupe) ─────────────────────────────────────────────────
 

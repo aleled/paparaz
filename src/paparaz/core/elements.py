@@ -106,6 +106,13 @@ class Shadow:
     color: str = "#80000000"
 
 
+def _validate_color(value: str, default: str) -> str:
+    """Return *value* if it's a valid QColor string, otherwise *default*."""
+    if QColor(value).isValid():
+        return value
+    return default
+
+
 @dataclass
 class ElementStyle:
     foreground_color: str = "#FF0000"
@@ -118,6 +125,10 @@ class ElementStyle:
     cap_style: str = "round"    # round, square, flat
     join_style: str = "round"   # round, bevel, miter
     dash_pattern: str = "solid" # solid, dash, dot, dashdot
+
+    def __post_init__(self):
+        self.foreground_color = _validate_color(self.foreground_color, "#FF0000")
+        self.background_color = _validate_color(self.background_color, "#FFFFFF")
 
 
 class AnnotationElement:
@@ -344,6 +355,36 @@ class AnnotationElement:
             "visible": self.visible,
         }
 
+    def _apply_base_dict(self, d: dict):
+        """Restore base fields from a dict produced by to_dict()."""
+        self.rotation = d.get("rotation", 0.0)
+        self.visible = d.get("visible", True)
+
+    @staticmethod
+    def _style_from_dict(d: dict) -> "ElementStyle":
+        """Reconstruct an ElementStyle from the 'style' sub-dict."""
+        sd = d.get("style", {})
+        shd = sd.get("shadow", {})
+        return ElementStyle(
+            foreground_color=sd.get("foreground_color", "#FF0000"),
+            background_color=sd.get("background_color", "#FFFFFF"),
+            line_width=sd.get("line_width", 3.0),
+            opacity=sd.get("opacity", 1.0),
+            font_family=sd.get("font_family", "Arial"),
+            font_size=sd.get("font_size", 14),
+            cap_style=sd.get("cap_style", "round"),
+            join_style=sd.get("join_style", "round"),
+            dash_pattern=sd.get("dash_pattern", "solid"),
+            shadow=Shadow(
+                enabled=shd.get("enabled", False),
+                offset_x=shd.get("offset_x", 3.0),
+                offset_y=shd.get("offset_y", 3.0),
+                blur_x=shd.get("blur_x", 5.0),
+                blur_y=shd.get("blur_y", 5.0),
+                color=shd.get("color", "#80000000"),
+            ),
+        )
+
 
 class PenElement(AnnotationElement):
     """Freehand pen stroke."""
@@ -405,6 +446,14 @@ class PenElement(AnnotationElement):
         d["points"] = [(p.x(), p.y()) for p in self.points]
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "PenElement":
+        elem = cls(style=AnnotationElement._style_from_dict(d))
+        for px, py in d.get("points", []):
+            elem.add_point(QPointF(px, py))
+        elem._apply_base_dict(d)
+        return elem
+
 
 class BrushElement(PenElement):
     """Soft brush stroke - like pen but with rounded, thicker, semi-transparent strokes."""
@@ -412,6 +461,14 @@ class BrushElement(PenElement):
     def __init__(self, style: Optional[ElementStyle] = None):
         super().__init__(style)
         self.element_type = ElementType.BRUSH
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "BrushElement":
+        elem = cls(style=AnnotationElement._style_from_dict(d))
+        for px, py in d.get("points", []):
+            elem.add_point(QPointF(px, py))
+        elem._apply_base_dict(d)
+        return elem
 
     def _make_pen(self) -> QPen:
         pen = super()._make_pen()
@@ -434,6 +491,14 @@ class HighlightElement(PenElement):
     def __init__(self, style: Optional[ElementStyle] = None):
         super().__init__(style)
         self.element_type = ElementType.HIGHLIGHT
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "HighlightElement":
+        elem = cls(style=AnnotationElement._style_from_dict(d))
+        for px, py in d.get("points", []):
+            elem.add_point(QPointF(px, py))
+        elem._apply_base_dict(d)
+        return elem
 
     def _make_pen(self) -> QPen:
         # Use full-opacity colour; visual transparency comes from Multiply blend.
@@ -511,6 +576,15 @@ class LineElement(AnnotationElement):
         d["start"] = (self.start.x(), self.start.y())
         d["end"] = (self.end.x(), self.end.y())
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "LineElement":
+        s = d.get("start", (0, 0))
+        e = d.get("end", (0, 0))
+        elem = cls(QPointF(s[0], s[1]), QPointF(e[0], e[1]),
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
 
 
 class ArrowElement(LineElement):
@@ -669,6 +743,17 @@ class CurvedArrowElement(AnnotationElement):
         d["control"] = (self.control.x(), self.control.y())
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "CurvedArrowElement":
+        s = d.get("start", (0, 0))
+        e = d.get("end", (0, 0))
+        c = d.get("control", None)
+        ctrl = QPointF(c[0], c[1]) if c else None
+        elem = cls(QPointF(s[0], s[1]), QPointF(e[0], e[1]), ctrl,
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
+
 
 class RectElement(AnnotationElement):
     """Rectangle annotation."""
@@ -726,6 +811,15 @@ class RectElement(AnnotationElement):
         d["rect"] = (self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
         d["filled"] = self.filled
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "RectElement":
+        r = d.get("rect", (0, 0, 0, 0))
+        elem = cls(QRectF(r[0], r[1], r[2], r[3]),
+                   filled=d.get("filled", False),
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
 
 
 class EllipseElement(AnnotationElement):
@@ -785,6 +879,15 @@ class EllipseElement(AnnotationElement):
         d["rect"] = (self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
         d["filled"] = self.filled
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "EllipseElement":
+        r = d.get("rect", (0, 0, 0, 0))
+        elem = cls(QRectF(r[0], r[1], r[2], r[3]),
+                   filled=d.get("filled", False),
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
 
 
 class TextElement(AnnotationElement):
@@ -1078,6 +1181,24 @@ class TextElement(AnnotationElement):
         d["stroke_width"]   = self.stroke_width
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "TextElement":
+        r = d.get("rect", (0, 0, 150, 40))
+        elem = cls(QPointF(r[0], r[1]), d.get("text", ""),
+                   style=AnnotationElement._style_from_dict(d))
+        elem.rect = QRectF(r[0], r[1], r[2], r[3])
+        elem.bold = d.get("bold", False)
+        elem.italic = d.get("italic", False)
+        elem.underline = d.get("underline", False)
+        elem.strikethrough = d.get("strikethrough", False)
+        elem.bg_enabled = d.get("bg_enabled", False)
+        elem.bg_color = d.get("bg_color", "#FFFF00")
+        elem.stroke_enabled = d.get("stroke_enabled", False)
+        elem.stroke_color = d.get("stroke_color", "#000000")
+        elem.stroke_width = d.get("stroke_width", 2)
+        elem._apply_base_dict(d)
+        return elem
+
 
 class NumberElement(AnnotationElement):
     """Auto-incrementing numbered marker."""
@@ -1157,6 +1278,15 @@ class NumberElement(AnnotationElement):
         d["text_color"] = self.text_color
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "NumberElement":
+        pos = d.get("position", (0, 0))
+        elem = cls(QPointF(pos[0], pos[1]), d.get("number", 1),
+                   d.get("size", 28), d.get("text_color", ""),
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
+
 
 class MaskElement(AnnotationElement):
     """Blur/pixelate mask region."""
@@ -1188,6 +1318,15 @@ class MaskElement(AnnotationElement):
         d["rect"] = (self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
         d["pixel_size"] = self.pixel_size
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "MaskElement":
+        r = d.get("rect", (0, 0, 0, 0))
+        elem = cls(QRectF(r[0], r[1], r[2], r[3]),
+                   d.get("pixel_size", 10),
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
 
 
 class ImageElement(AnnotationElement):
@@ -1242,6 +1381,16 @@ class ImageElement(AnnotationElement):
         d = super().to_dict()
         d["rect"] = (self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ImageElement":
+        r = d.get("rect", (0, 0, 100, 100))
+        # Pixmap data is not serialized — create placeholder with correct rect
+        elem = cls(None, QPointF(r[0], r[1]),
+                   style=AnnotationElement._style_from_dict(d))
+        elem.rect = QRectF(r[0], r[1], r[2], r[3])
+        elem._apply_base_dict(d)
+        return elem
 
 
 class StampElement(AnnotationElement):
@@ -1298,6 +1447,16 @@ class StampElement(AnnotationElement):
         d["stamp_id"] = self.stamp_id
         d["rect"] = (self.rect.x(), self.rect.y(), self.rect.width(), self.rect.height())
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StampElement":
+        r = d.get("rect", (0, 0, 48, 48))
+        size = r[2] if r[2] > 0 else 48
+        cx, cy = r[0] + r[2] / 2, r[1] + r[3] / 2
+        elem = cls(d.get("stamp_id", "check"), QPointF(cx, cy), size,
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
 
 
 class MagnifierElement(AnnotationElement):
@@ -1389,3 +1548,57 @@ class MagnifierElement(AnnotationElement):
                              self.display_rect.width(), self.display_rect.height())
         d["zoom"] = self.zoom
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "MagnifierElement":
+        sr = d.get("source_rect", (0, 0, 0, 0))
+        dr = d.get("display_rect", (0, 0, 0, 0))
+        elem = cls(QRectF(sr[0], sr[1], sr[2], sr[3]),
+                   QRectF(dr[0], dr[1], dr[2], dr[3]),
+                   d.get("zoom", 2.0),
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
+
+
+# ---------------------------------------------------------------------------
+# Element factory — reconstruct any element from its to_dict() output
+# ---------------------------------------------------------------------------
+
+_ELEMENT_CLASS_MAP: dict[str, type] = {}
+
+
+def _register_element_classes():
+    """Build the type-name → class mapping."""
+    global _ELEMENT_CLASS_MAP
+    _ELEMENT_CLASS_MAP = {
+        "PEN": PenElement,
+        "BRUSH": BrushElement,
+        "HIGHLIGHT": HighlightElement,
+        "LINE": LineElement,
+        "ARROW": ArrowElement,
+        "CURVED_ARROW": CurvedArrowElement,
+        "RECTANGLE": RectElement,
+        "ELLIPSE": EllipseElement,
+        "TEXT": TextElement,
+        "NUMBER": NumberElement,
+        "MASK": MaskElement,
+        "IMAGE": ImageElement,
+        "STAMP": StampElement,
+        "MAGNIFIER": MagnifierElement,
+    }
+
+
+_register_element_classes()
+
+
+def element_from_dict(d: dict) -> Optional[AnnotationElement]:
+    """Reconstruct an AnnotationElement from a dict produced by to_dict().
+
+    Returns None if the element type is unknown.
+    """
+    type_name = d.get("type", "")
+    cls = _ELEMENT_CLASS_MAP.get(type_name)
+    if cls is None:
+        return None
+    return cls.from_dict(d)

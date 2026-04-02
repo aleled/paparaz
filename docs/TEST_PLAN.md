@@ -1,16 +1,18 @@
 # PapaRaZ Test Plan
 
 ## Current State
-- **422 tests** across 3 files, all passing (~10s)
+- **625 tests** across 4 files, all passing (~11s)
 - Framework: pytest + PySide6 headless widget testing
 - No external display or browser required
+- See `docs/QA_FINDINGS.md` for bugs found and issue backlog
 
 ### Test Files
 | File | Tests | Focus |
 |------|-------|-------|
 | `test_tools_and_properties.py` | 121 | Unit tests — element geometry, tool creation, property undo, canvas ops, clipboard, snap engine |
-| `test_functional.py` | 158 | Integration — tool switching, element lifecycle, text editing, copy/paste, undo/redo, layers, crop, recovery |
+| `test_functional.py` | 227 | Integration — tool switching, element lifecycle, text editing, copy/paste, undo/redo, layers, crop, recovery, slice, eyedropper, magnifier, export, canvas resize, TOOL_SECTIONS |
 | `test_ui_ux.py` | 143 | Widget — toolbar layout, editor structure, side panel modes, settings dialog, layers panel, theme system |
+| `test_qa_extended.py` | 134 | Extended QA — smoke, boundary, negative, data integrity, state machine, performance, accessibility, signal safety, Phase B components |
 
 ---
 
@@ -153,5 +155,5 @@ python -m pytest tests/ --cov=src/paparaz --cov-report=term-missing
 
 ---
 
-**Last updated**: 2026-04-01
+**Last updated**: 2026-04-02
 **Version**: 0.9.6

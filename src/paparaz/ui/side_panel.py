@@ -1310,13 +1310,11 @@ class SidePanel(QWidget):
             return elem
 
         if t == ToolType.RECTANGLE:
-            elem = RectElement(QRectF(10, 8, 90, 40), style)
-            elem.filled = self._filled_check.isChecked()
+            elem = RectElement(QRectF(10, 8, 90, 40), filled=self._filled_check.isChecked(), style=style)
             return elem
 
         if t == ToolType.ELLIPSE:
-            elem = EllipseElement(QRectF(10, 8, 90, 40), style)
-            elem.filled = self._filled_check.isChecked()
+            elem = EllipseElement(QRectF(10, 8, 90, 40), filled=self._filled_check.isChecked(), style=style)
             return elem
 
         if t == ToolType.TEXT:

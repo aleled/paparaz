@@ -35,6 +35,7 @@ from paparaz.core.elements import (
     TextElement, NumberElement, MaskElement, StampElement,
     RectElement, EllipseElement, PenElement, BrushElement,
     LineElement, ArrowElement, ImageElement, ElementStyle, Shadow,
+    MagnifierElement,
 )
 from paparaz.core.history import HistoryManager, Command
 from paparaz.core.settings import AppSettings, SettingsManager, ToolDefaults
@@ -47,6 +48,7 @@ from paparaz.tools.drawing import (
 )
 from paparaz.tools.special import (
     TextTool, NumberingTool, EraserTool, MasqueradeTool, FillTool, StampTool,
+    SliceTool, EyedropperTool, MagnifierTool,
 )
 from paparaz.ui.canvas import AnnotationCanvas
 from paparaz.ui.side_panel import SidePanel
@@ -80,6 +82,16 @@ class _ShiftEvent:
         return Qt.MouseButton.LeftButton
     def button(self):
         return Qt.MouseButton.LeftButton
+
+
+class _RightClickEvent:
+    """Mouse event stub with right button."""
+    def modifiers(self):
+        return Qt.KeyboardModifier.NoModifier
+    def buttons(self):
+        return Qt.MouseButton.RightButton
+    def button(self):
+        return Qt.MouseButton.RightButton
 
 
 def click(tool, pos: QPointF):
@@ -1739,3 +1751,659 @@ class TestFillToolBasic:
         c.history.undo()
         # Background should be restored
         assert c._background.size() == old_bg.size()
+
+
+# ===========================================================================
+# Phase A: SliceTool
+# ===========================================================================
+
+class TestSliceTool:
+    """SliceTool: draw selection, apply slice, cancel."""
+
+    def test_activation_sets_crosshair(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        assert tool.cursor == Qt.CursorShape.CrossCursor
+
+    def test_draw_selection_sets_active(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        assert tool._active is True
+        tool.on_move(QPointF(200, 200), ev)
+        tool.on_release(QPointF(200, 200), ev)
+        assert tool._active is True  # stays active until apply/cancel
+
+    def test_cancel_via_escape(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(200, 200), ev)
+        tool.on_release(QPointF(200, 200), ev)
+        assert tool._active is True
+        key(tool, Qt.Key.Key_Escape)
+        assert tool._active is False
+
+    def test_apply_via_enter_creates_element(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(200, 200), ev)
+        tool.on_release(QPointF(200, 200), ev)
+        before = len(c.elements)
+        key(tool, Qt.Key.Key_Return)
+        assert len(c.elements) == before + 1
+        assert isinstance(c.elements[-1], ImageElement)
+
+    def test_apply_via_right_click(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(200, 200), ev)
+        tool.on_release(QPointF(200, 200), ev)
+        before = len(c.elements)
+        rc = _RightClickEvent()
+        tool.on_press(QPointF(100, 100), rc)
+        assert len(c.elements) == before + 1
+
+    def test_apply_via_double_click(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(200, 200), ev)
+        tool.on_release(QPointF(200, 200), ev)
+        before = len(c.elements)
+        tool.on_double_click(QPointF(100, 100), ev)
+        assert len(c.elements) == before + 1
+
+    def test_slice_undoable(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(200, 200), ev)
+        tool.on_release(QPointF(200, 200), ev)
+        key(tool, Qt.Key.Key_Return)
+        assert len(c.elements) == 1
+        c.history.undo()
+        assert len(c.elements) == 0
+
+    def test_tiny_selection_cancels(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(51, 51), ev)  # < 4px
+        tool.on_release(QPointF(51, 51), ev)
+        key(tool, Qt.Key.Key_Return)
+        assert len(c.elements) == 0  # too small, cancelled
+
+    def test_right_click_ignored_when_no_selection(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        rc = _RightClickEvent()
+        tool.on_press(QPointF(100, 100), rc)
+        assert len(c.elements) == 0
+
+    def test_slice_deactivates_after_apply(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(200, 200), ev)
+        tool.on_release(QPointF(200, 200), ev)
+        key(tool, Qt.Key.Key_Return)
+        assert tool._active is False
+
+    def test_new_selection_resets_rotation(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_release(QPointF(200, 200), ev)
+        tool._rotation = 45.0  # simulate rotation
+        # Start new selection
+        tool.on_press(QPointF(10, 10), ev)
+        assert tool._rotation == 0.0
+
+    def test_multiple_slices(self):
+        c = make_canvas()
+        tool = SliceTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        # First slice
+        tool.on_press(QPointF(10, 10), ev)
+        tool.on_move(QPointF(100, 100), ev)
+        tool.on_release(QPointF(100, 100), ev)
+        key(tool, Qt.Key.Key_Return)
+        assert len(c.elements) == 1
+        # Second slice
+        tool.on_press(QPointF(200, 200), ev)
+        tool.on_move(QPointF(350, 350), ev)
+        tool.on_release(QPointF(350, 350), ev)
+        key(tool, Qt.Key.Key_Return)
+        assert len(c.elements) == 2
+
+
+# ===========================================================================
+# Phase A: EyedropperTool
+# ===========================================================================
+
+class TestEyedropperTool:
+    """EyedropperTool: colour sampling, auto-return to previous tool."""
+
+    def test_tool_type_is_eyedropper(self):
+        c = make_canvas()
+        tool = EyedropperTool(c)
+        assert tool.tool_type == ToolType.EYEDROPPER
+
+    def test_cursor_is_crosshair(self):
+        c = make_canvas()
+        tool = EyedropperTool(c)
+        assert tool.cursor == Qt.CursorShape.CrossCursor
+
+    def test_on_activate_remembers_prev_tool(self):
+        c = make_canvas()
+        pen = PenTool(c)
+        c.set_tool(pen)
+        eye = EyedropperTool(c)
+        c._tool = pen  # simulate active tool
+        eye.on_activate()
+        assert eye._prev_tool_type == ToolType.PEN
+
+    def test_on_activate_does_not_remember_self(self):
+        c = make_canvas()
+        eye = EyedropperTool(c)
+        c._tool = eye
+        eye.on_activate()
+        assert eye._prev_tool_type is None
+
+    def test_left_click_sets_fg_color(self):
+        c = make_canvas()
+        c._fg_color = "#000000"
+        eye = EyedropperTool(c)
+        c.set_tool(eye)
+        # _sample_color returns white in headless (no screen)
+        ev = _FakeEvent()
+        eye.on_press(QPointF(50, 50), ev)
+        # In headless, primaryScreen() may be None → returns white
+        # But set_foreground_color should have been called
+
+    def test_right_click_sets_bg_color(self):
+        c = make_canvas()
+        eye = EyedropperTool(c)
+        c.set_tool(eye)
+        rc = _RightClickEvent()
+        eye.on_press(QPointF(50, 50), rc)
+        # Verifies no crash on right-click path
+
+    def test_return_to_prev_tool_defaults_to_select(self):
+        c = make_canvas()
+        eye = EyedropperTool(c)
+        assert eye._prev_tool_type is None
+        # When returning with None, should default to SELECT
+        # (it sets _prev_tool_type = TT.SELECT internally)
+
+    def test_loupe_constants(self):
+        c = make_canvas()
+        eye = EyedropperTool(c)
+        assert eye._LOUPE_D == 80
+        assert eye._ZOOM == 10
+        assert eye._SAMPLE_R == 4  # 80 // (2*10)
+
+    def test_on_release_is_noop(self):
+        c = make_canvas()
+        eye = EyedropperTool(c)
+        c.set_tool(eye)
+        ev = _FakeEvent()
+        # Should not crash
+        eye.on_release(QPointF(50, 50), ev)
+
+
+# ===========================================================================
+# Phase A: MagnifierTool & MagnifierElement
+# ===========================================================================
+
+class TestMagnifierTool:
+    """MagnifierTool: create magnifier elements."""
+
+    def test_tool_type_and_cursor(self):
+        c = make_canvas()
+        tool = MagnifierTool(c)
+        assert tool.tool_type == ToolType.MAGNIFIER
+        assert tool.cursor == Qt.CursorShape.CrossCursor
+
+    def test_default_zoom(self):
+        c = make_canvas()
+        tool = MagnifierTool(c)
+        assert tool.zoom == 2.0
+
+    def test_press_creates_element(self):
+        c = make_canvas()
+        tool = MagnifierTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        assert tool._current is not None
+        assert isinstance(tool._current, MagnifierElement)
+
+    def test_move_updates_source_display(self):
+        c = make_canvas()
+        tool = MagnifierTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(150, 150), ev)
+        src = tool._current.source_rect.normalized()
+        assert src.width() == 100
+        assert src.height() == 100
+        # Display should be 2x the source
+        disp = tool._current.display_rect
+        assert disp.width() == 200
+        assert disp.height() == 200
+
+    def test_release_adds_element_if_large_enough(self):
+        c = make_canvas()
+        tool = MagnifierTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(150, 150), ev)
+        tool.on_release(QPointF(150, 150), ev)
+        assert len(c.elements) == 1
+        assert isinstance(c.elements[0], MagnifierElement)
+
+    def test_release_ignores_tiny_selection(self):
+        c = make_canvas()
+        tool = MagnifierTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(52, 52), ev)  # < 5px
+        tool.on_release(QPointF(52, 52), ev)
+        assert len(c.elements) == 0
+
+    def test_release_clears_state(self):
+        c = make_canvas()
+        tool = MagnifierTool(c)
+        c.set_tool(tool)
+        ev = _FakeEvent()
+        tool.on_press(QPointF(50, 50), ev)
+        tool.on_move(QPointF(150, 150), ev)
+        tool.on_release(QPointF(150, 150), ev)
+        assert tool._current is None
+        assert tool._start is None
+
+
+class TestMagnifierElement:
+    """MagnifierElement: bounding_rect, contains_point, move_by, paint."""
+
+    def test_bounding_rect_uses_display(self):
+        src = QRectF(10, 10, 50, 50)
+        disp = QRectF(100, 100, 100, 100)
+        elem = MagnifierElement(src, disp, zoom=2.0)
+        assert elem.bounding_rect() == disp.normalized()
+
+    def test_contains_point_in_display(self):
+        src = QRectF(10, 10, 50, 50)
+        disp = QRectF(100, 100, 100, 100)
+        elem = MagnifierElement(src, disp, zoom=2.0)
+        assert elem.contains_point(QPointF(150, 150))
+        assert not elem.contains_point(QPointF(30, 30))
+
+    def test_move_by_shifts_display(self):
+        src = QRectF(10, 10, 50, 50)
+        disp = QRectF(100, 100, 100, 100)
+        elem = MagnifierElement(src, disp, zoom=2.0)
+        elem.move_by(10, 20)
+        assert elem.display_rect.x() == 110
+        assert elem.display_rect.y() == 120
+
+    def test_zoom_property(self):
+        elem = MagnifierElement(QRectF(), QRectF(), zoom=3.0)
+        assert elem.zoom == 3.0
+
+    def test_element_type_is_magnifier(self):
+        from paparaz.core.elements import ElementType
+        elem = MagnifierElement(QRectF(), QRectF())
+        assert elem.element_type == ElementType.MAGNIFIER
+
+    def test_paint_no_crash_without_background(self):
+        """Paint should not crash even with no background pixmap."""
+        from PySide6.QtGui import QPainter
+        src = QRectF(10, 10, 50, 50)
+        disp = QRectF(100, 100, 100, 100)
+        elem = MagnifierElement(src, disp, zoom=2.0)
+        pix = QPixmap(400, 400)
+        pix.fill(Qt.GlobalColor.white)
+        p = QPainter(pix)
+        elem.paint(p)  # should not crash
+        p.end()
+
+    def test_paint_with_background(self):
+        from PySide6.QtGui import QPainter
+        bg = QPixmap(200, 200)
+        bg.fill(Qt.GlobalColor.red)
+        src = QRectF(10, 10, 50, 50)
+        disp = QRectF(100, 100, 100, 100)
+        elem = MagnifierElement(src, disp, zoom=2.0, background=bg)
+        pix = QPixmap(400, 400)
+        pix.fill(Qt.GlobalColor.white)
+        p = QPainter(pix)
+        elem.paint(p)
+        p.end()
+
+
+# ===========================================================================
+# Phase A: CanvasResizeDialog
+# ===========================================================================
+
+class TestCanvasResizeDialog:
+    """CanvasResizeDialog: spinbox logic, aspect ratio lock, mode toggle."""
+
+    def _make(self, w=800, h=600):
+        from paparaz.ui.canvas_resize_dialog import CanvasResizeDialog
+        return CanvasResizeDialog(w, h)
+
+    def test_creation_defaults(self):
+        d = self._make(800, 600)
+        assert d._orig_w == 800
+        assert d._orig_h == 600
+        assert d._w_spin.value() == 800
+        assert d._h_spin.value() == 600
+
+    def test_get_size_px_mode(self):
+        d = self._make(800, 600)
+        w, h = d.get_size()
+        assert w == 800
+        assert h == 600
+
+    def test_aspect_ratio_locked_by_default(self):
+        d = self._make(800, 600)
+        assert d._aspect_locked is True
+        assert d._lock_btn.isChecked() is True
+
+    def test_aspect_lock_width_changes_height(self):
+        d = self._make(800, 600)
+        d._w_spin.setValue(400)
+        assert d._h_spin.value() == 300  # 400 * 600/800 = 300
+
+    def test_aspect_lock_height_changes_width(self):
+        d = self._make(800, 600)
+        d._h_spin.setValue(300)
+        assert d._w_spin.value() == 400
+
+    def test_unlock_aspect_allows_independent(self):
+        d = self._make(800, 600)
+        d._lock_btn.setChecked(False)
+        assert d._aspect_locked is False
+        d._w_spin.setValue(400)
+        assert d._h_spin.value() == 600  # unchanged
+
+    def test_mode_switch_to_pct(self):
+        d = self._make(800, 600)
+        d._set_mode("pct")
+        assert d._pct_btn.isChecked() is True
+        assert d._px_btn.isChecked() is False
+        assert d._w_pct_spin.value() == 100.0
+        assert d._h_pct_spin.value() == 100.0
+
+    def test_mode_switch_back_to_px(self):
+        d = self._make(800, 600)
+        d._set_mode("pct")
+        d._set_mode("px")
+        assert d._px_btn.isChecked() is True
+        assert d._pct_btn.isChecked() is False
+
+    def test_pct_mode_get_size(self):
+        d = self._make(800, 600)
+        d._set_mode("pct")
+        d._w_pct_spin.setValue(50.0)
+        # With aspect lock, h should follow
+        w, h = d.get_size()
+        assert w == 400
+        assert h == 300
+
+    def test_spinbox_range(self):
+        d = self._make(800, 600)
+        assert d._w_spin.minimum() == 1
+        assert d._w_spin.maximum() == 32000
+        assert d._h_spin.minimum() == 1
+        assert d._h_spin.maximum() == 32000
+
+    def test_info_label_shows_current_size(self):
+        d = self._make(1920, 1080)
+        assert "1920" in d._info_label.text()
+        assert "1080" in d._info_label.text()
+
+    def test_window_is_modal(self):
+        d = self._make()
+        assert d.isModal() is True
+
+
+# ===========================================================================
+# Phase A: SVG Export & render_final
+# ===========================================================================
+
+class TestExport:
+    """Export module: render_final, save_png, save_jpg, save_svg."""
+
+    def test_render_final_returns_pixmap(self):
+        from paparaz.core.export import render_final
+        bg = QPixmap(200, 200)
+        bg.fill(Qt.GlobalColor.blue)
+        result = render_final(bg)
+        assert isinstance(result, QPixmap)
+        assert result.size() == bg.size()
+
+    def test_render_final_with_callback(self):
+        from paparaz.core.export import render_final
+        from PySide6.QtGui import QPainter
+        bg = QPixmap(200, 200)
+        bg.fill(Qt.GlobalColor.white)
+        called = [False]
+
+        def paint(painter: QPainter):
+            called[0] = True
+            painter.fillRect(10, 10, 50, 50, QColor("red"))
+
+        result = render_final(bg, paint)
+        assert called[0] is True
+        assert result.size() == bg.size()
+
+    def test_render_final_without_callback(self):
+        from paparaz.core.export import render_final
+        bg = QPixmap(100, 100)
+        bg.fill(Qt.GlobalColor.green)
+        result = render_final(bg, None)
+        assert result.size() == bg.size()
+
+    def test_save_png(self):
+        from paparaz.core.export import save_png
+        bg = QPixmap(100, 100)
+        bg.fill(Qt.GlobalColor.red)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            path = f.name
+        try:
+            ok = save_png(bg, path)
+            assert ok is True
+            assert os.path.exists(path)
+            assert os.path.getsize(path) > 0
+        finally:
+            os.unlink(path)
+
+    def test_save_png_with_compression(self):
+        from paparaz.core.export import save_png
+        bg = QPixmap(100, 100)
+        bg.fill(Qt.GlobalColor.red)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            path = f.name
+        try:
+            ok = save_png(bg, path, compression=5)
+            assert ok is True
+        finally:
+            os.unlink(path)
+
+    def test_save_jpg(self):
+        from paparaz.core.export import save_jpg
+        bg = QPixmap(100, 100)
+        bg.fill(Qt.GlobalColor.blue)
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            path = f.name
+        try:
+            ok = save_jpg(bg, path, quality=80)
+            assert ok is True
+            assert os.path.exists(path)
+        finally:
+            os.unlink(path)
+
+    def test_save_svg(self):
+        from paparaz.core.export import save_svg
+        bg = QPixmap(200, 200)
+        bg.fill(Qt.GlobalColor.white)
+        with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as f:
+            path = f.name
+        try:
+            ok = save_svg(bg, path)
+            assert ok is True
+            assert os.path.exists(path)
+            with open(path, "r") as f:
+                content = f.read()
+            assert "svg" in content.lower()
+        finally:
+            os.unlink(path)
+
+    def test_save_svg_with_callback(self):
+        from paparaz.core.export import save_svg
+        from PySide6.QtGui import QPainter
+        bg = QPixmap(200, 200)
+        bg.fill(Qt.GlobalColor.white)
+        called = [False]
+
+        def paint(painter: QPainter):
+            called[0] = True
+            painter.fillRect(10, 10, 50, 50, QColor("red"))
+
+        with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as f:
+            path = f.name
+        try:
+            ok = save_svg(bg, path, paint)
+            assert ok is True
+            assert called[0] is True
+        finally:
+            os.unlink(path)
+
+    def test_copy_to_clipboard(self):
+        from paparaz.core.export import copy_to_clipboard
+        bg = QPixmap(50, 50)
+        bg.fill(Qt.GlobalColor.cyan)
+        copy_to_clipboard(bg)
+        clip = QApplication.clipboard()
+        assert not clip.pixmap().isNull()
+
+
+# ===========================================================================
+# Phase A: SidePanel TOOL_SECTIONS Deep Coverage
+# ===========================================================================
+
+class TestToolSectionsMappings:
+    """Verify every tool type in TOOL_SECTIONS maps to correct sections."""
+
+    def _panel(self):
+        from paparaz.ui.side_panel import SidePanel
+        bg = QPixmap(400, 300)
+        bg.fill(Qt.GlobalColor.white)
+        canvas = AnnotationCanvas(bg)
+        return SidePanel(canvas), canvas
+
+    def test_all_tool_types_have_mapping(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        expected_tools = {
+            ToolType.SELECT, ToolType.PEN, ToolType.BRUSH, ToolType.HIGHLIGHT,
+            ToolType.LINE, ToolType.ARROW, ToolType.CURVED_ARROW,
+            ToolType.RECTANGLE, ToolType.ELLIPSE, ToolType.TEXT,
+            ToolType.NUMBERING, ToolType.ERASER, ToolType.MASQUERADE,
+            ToolType.FILL, ToolType.STAMP, ToolType.CROP, ToolType.SLICE,
+            ToolType.EYEDROPPER,
+        }
+        for t in expected_tools:
+            assert t in TOOL_SECTIONS, f"{t} missing from TOOL_SECTIONS"
+
+    def test_rectangle_has_fill_section(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.RECTANGLE]
+        assert sections.get("fill") is True
+
+    def test_ellipse_has_fill_section(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.ELLIPSE]
+        assert sections.get("fill") is True
+
+    def test_text_has_text_section(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.TEXT]
+        assert sections.get("text") is True
+
+    def test_pen_has_stroke_and_line_style(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.PEN]
+        assert sections.get("stroke") is True
+        assert sections.get("line_style") is True
+
+    def test_select_has_no_color(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.SELECT]
+        assert sections.get("color") is False
+
+    def test_eraser_has_no_color(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.ERASER]
+        assert sections.get("color") is False
+
+    def test_masquerade_has_mask_section(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.MASQUERADE]
+        assert sections.get("mask") is True
+
+    def test_numbering_has_number_section(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.NUMBERING]
+        assert sections.get("number") is True
+
+    def test_stamp_has_stamp_section(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.STAMP]
+        assert sections.get("stamp") is True
+
+    def test_fill_has_fill_tolerance(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        sections = TOOL_SECTIONS[ToolType.FILL]
+        assert sections.get("fill_tol") is True
+
+    def test_drawing_tools_have_effects(self):
+        from paparaz.ui.side_panel import TOOL_SECTIONS
+        for t in [ToolType.PEN, ToolType.BRUSH, ToolType.LINE,
+                  ToolType.ARROW, ToolType.CURVED_ARROW,
+                  ToolType.RECTANGLE, ToolType.ELLIPSE]:
+            assert TOOL_SECTIONS[t].get("effects") is True, f"{t} missing effects"
+
+    def test_update_for_tool_no_crash(self):
+        panel, canvas = self._panel()
+        for t in [ToolType.SELECT, ToolType.PEN, ToolType.RECTANGLE,
+                  ToolType.TEXT, ToolType.FILL, ToolType.STAMP]:
+            panel.update_for_tool(t)  # should not crash

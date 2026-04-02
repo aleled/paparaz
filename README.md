@@ -4,7 +4,7 @@
 
 <br/>
 
-[![Version](https://img.shields.io/badge/version-0.9.5-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.9.7-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/aleled/paparaz/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![PySide6](https://img.shields.io/badge/PySide6-Qt6-41CD52?style=flat-square&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
@@ -37,6 +37,7 @@ Every annotation is a **discrete, selectable object** — not a flat paint layer
 | 🖥️ | **Multi-monitor** | Win32 DPI-aware capture across all screens |
 | 🎨 | **15 Annotation Tools** | Pen, Brush, Arrow, Line, Rect, Ellipse, Text, Number, Stamp, Eraser, Blur, Fill, Crop, Slice, Select |
 | 🔖 | **32 Stamps** | Approved, Rejected, Priority, Bug, WIP, DRAFT, TODO, DONE, FIX, NEW and more (inc. transparent-bg variants) |
+| 💾 | **Element Serialization** | Full JSON roundtrip — save and restore all annotations |
 | 🔤 | **Windows OCR** | Select strokes → right-click → convert to editable text |
 | ✂️ | **Crop & Slice** | Non-destructive crop or export sub-regions |
 | 🌫️ | **Blur / Redact** | Pixelate sensitive regions |
@@ -54,7 +55,7 @@ Every annotation is a **discrete, selectable object** — not a flat paint layer
 
 ### Option 1 — Installer (Recommended)
 
-1. Download **[PapaRaZ_Setup_0.9.5.exe](https://github.com/aleled/paparaz/releases/latest)**
+1. Download **[PapaRaZ_Setup_0.9.7.exe](https://github.com/aleled/paparaz/releases/latest)**
 2. Run the installer
 3. Press **PrintScreen** — start capturing
 
@@ -187,6 +188,9 @@ src/paparaz/
 | [TOOLS_SPEC.md](docs/TOOLS_SPEC.md) | Tool behavior matrix and property reference |
 | [UI_SPEC.md](docs/UI_SPEC.md) | Visual design specification |
 | [CHANGELOG.md](docs/CHANGELOG.md) | Full version history |
+| [TEST_PLAN.md](docs/TEST_PLAN.md) | Test suite guide and conventions |
+| [QA_FINDINGS.md](docs/QA_FINDINGS.md) | QA findings report and backlog |
+| [SETTINGS_PLAN.md](docs/SETTINGS_PLAN.md) | Settings dialog audit and plan |
 
 ---
 

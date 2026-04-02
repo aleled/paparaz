@@ -1,7 +1,7 @@
 # PapaRaZ QA Findings Report
 
 **Date**: 2026-04-02
-**Version**: 0.9.6
+**Version**: 0.9.7
 **Test Suite**: 653 tests across 4 files, all passing (~14s)
 
 ---

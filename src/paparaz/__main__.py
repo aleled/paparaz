@@ -13,7 +13,7 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("PapaRaZ")
-    app.setApplicationVersion("0.9.4")
+    app.setApplicationVersion("0.9.7")
 
     paparaz = PapaRazApp(app)
     paparaz.start()

@@ -26,15 +26,15 @@
                                                            v           v
                                                    +-------------------+
                                                    | Tool System       |
-                                                   | (12 tools, hover, |
+                                                   | (15 tools, hover, |
                                                    |  double-click)    |
                                                    +-------------------+
                                                            |
                                                            v
                                                    +-------------------+
                                                    | Element Model     |
-                                                   | (10 types, style, |
-                                                   |  shadow, history) |
+                                                   | (14 types, style, |
+                                                   |  shadow, serial.) |
                                                    +-------------------+
                                                            |
                                                            v
@@ -55,14 +55,14 @@ src/paparaz/
     core/
         __init__.py
         capture.py           # Win32 BitBlt multi-monitor capture (DPI-aware)
-        elements.py          # 11 element types: Pen, Brush, Line, Arrow, CurvedArrow,
-                             #   Rect, Ellipse, Text, Number, Mask, Image
+        elements.py          # 14 element types: Pen, Brush, Highlight, Line, Arrow,
+                             #   CurvedArrow, Rect, Ellipse, Text, Number, Mask,
+                             #   Image, Stamp, Magnifier
                              # ElementStyle: colors, width, opacity, shadow (blur_x/blur_y),
-                             #   font, cap/join/dash
-                             # TextElement extras: stroke_enabled/color/width, bg_enabled/color,
-                             #   resize handle drawn on right edge when editing
+                             #   font, cap/join/dash, color validation via _validate_color()
+                             # Full serialization: to_dict() + from_dict() on all types,
+                             #   element_from_dict() factory with _ELEMENT_CLASS_MAP registry
                              # set_selection_accent(hex): updates SEL_COLOR class var
-                             #   so all selection visuals use the active theme accent
         history.py           # Undo/Redo via Command pattern (200-step stack)
         export.py            # save_png, save_jpg, save_svg, copy_to_clipboard
         settings.py          # JSON config in ~/.paparaz/settings.json

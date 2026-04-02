@@ -1,7 +1,7 @@
 # Settings Dialog — Overhaul Plan
 
-**Status**: Planning
-**Last updated**: 2026-04-01
+**Status**: Most items implemented in v0.9.6–0.9.7
+**Last updated**: 2026-04-02
 **Scope**: Audit of all configurable behaviors vs. what is actually exposed in the settings UI.
 
 ---

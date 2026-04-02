@@ -186,7 +186,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Filename live preview (accent colored, format-aware extension)
 
 ### Far future (Tier 10)
-- [ ] Project file format (.papraz) — save/load edits with full object state (large scope, blocks on stable element serialization)
+- [ ] Project file format (.papraz) — save/load edits with full object state (element serialization complete in v0.9.7, needs file format wrapper)
 
 ---
 
@@ -194,6 +194,6 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Not started
 - [x] Completed
 
-## Current Status: Phase 6 complete, Phase 7 nearly complete (testing remaining)
-**Version**: 0.9.6
-**Last updated**: 2026-04-01
+## Current Status: Phase 7 complete — comprehensive QA, serialization, robustness fixes
+**Version**: 0.9.7
+**Last updated**: 2026-04-02

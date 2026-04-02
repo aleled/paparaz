@@ -239,4 +239,4 @@ See `docs/QA_FINDINGS.md` for full details on each issue.
 ---
 
 **Last updated**: 2026-04-02
-**Version**: 0.9.6
+**Version**: 0.9.7

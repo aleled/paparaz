@@ -1,5 +1,34 @@
 # PapaRaZ - Changelog
 
+## [0.9.7] - 2026-04-02
+
+### Element Serialization
+- Added `from_dict()` classmethod to all 12 element types for JSON deserialization
+- New `element_from_dict()` factory function with `_ELEMENT_CLASS_MAP` type registry
+- Full roundtrip: `to_dict()` → JSON → `from_dict()` for all element types
+- Enables future .papraz project file format and session recovery from JSON
+
+### Robustness Fixes
+- Guard `set_tool(None)` — no longer crashes, silently returns
+- Guard `copy_element(None)` — no longer crashes, silently returns
+- Color validation in `ElementStyle` — invalid color strings fall back to defaults (`#FF0000` fg, `#FFFFFF` bg)
+- Fixed `RectElement`/`EllipseElement` positional arg trap in side panel preview builder
+
+### EyedropperTool Improvements
+- Added `_sample_color_from_pixmap()` fallback — reads directly from canvas background
+- `_sample_color()` and `_sample_area()` now try screen grab first, then fall back to background pixmap
+- Tool is now fully testable in headless environments
+
+### Test Suite Expansion
+- **653 tests** across 4 files, all passing (~14s)
+- 29 new from_dict roundtrip tests covering all element types
+- 9 fix verification tests for guards, color validation, eyedropper fallback
+- 3 color case-sensitivity test fixes
+- Updated QA_FINDINGS.md — all issues marked FIXED
+- Updated TEST_PLAN.md with accurate test counts
+
+---
+
 ## [0.9.6] - 2026-04-01
 
 ### Multiple Capture Modes

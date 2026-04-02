@@ -23,7 +23,7 @@
 
 ## ✨ What is PapaRaZ?
 
-PapaRaZ is a **lightweight, object-based screen capture and annotation tool** for Windows — inspired by Flameshot but built from scratch in Python + PySide6.
+PapaRaZ is a **lightweight, object-based screen capture and annotation tool** for Windows, built from scratch in Python + PySide6.
 
 Every annotation is a **discrete, selectable object** — not a flat paint layer. Click anything to re-select it, move it, resize it, rotate it or change its properties long after placing it.
 
@@ -204,10 +204,9 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 MIT — see [LICENSE](LICENSE)
 
-> PapaRaZ is an independent Python/PySide6 reimplementation inspired by [Flameshot](https://flameshot.org) (GPL-3.0). No Flameshot source code was copied or adapted.
 
 ---
 
 <div align="center">
-  <sub>Built with ❤️ by <a href="https://github.com/aleled">Alejandro Lichtenfeld</a></sub>
+  <sub>Built with ❤️ by <a href="https://github.com/aleled">Alejandro Lichtenfeld</a> — Software & Network Engineer, Calella, Spain</sub>
 </div>

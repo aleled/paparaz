@@ -195,7 +195,7 @@
   `wip` (dashed orange), `draft` (dashed gray), `todo` (blue), `done` (green), `fix` (red), `new` (orange starburst)
 
 ### Docs Cleanup
-- Removed all remaining Flameshot references from `PLAN.md`, `ARCHITECTURE.md`, `UI_SPEC.md`, `CHANGELOG.md`
+- Cleaned up third-party references from `PLAN.md`, `ARCHITECTURE.md`, `UI_SPEC.md`, `CHANGELOG.md`
 
 ---
 

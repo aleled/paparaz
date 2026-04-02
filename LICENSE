@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2024 Alejandro Lichtenfeld
+Copyright (c) 2026 Alejandro Lichtenfeld
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,8 +20,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
-
-This project is inspired by Flameshot (https://flameshot.org, GPL-3.0).
-PapaRaZ is an independent Python/PySide6 reimplementation for Windows.
-No source code from Flameshot was copied or adapted in this project.

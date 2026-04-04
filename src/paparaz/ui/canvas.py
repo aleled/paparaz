@@ -417,8 +417,10 @@ class AnnotationCanvas(QWidget):
 
         cmd = Command(f"Add {elem.element_type.name}", do, undo)
         self.history.execute(cmd)
-        # Auto-select the just-drawn element so user can tweak properties
-        if auto_select:
+        # Auto-select only when using the Select tool (or explicit request).
+        # Drawing tools keep the user in drawing mode — no handles shown,
+        # so the next click starts a new element instead of resizing the old one.
+        if auto_select and not self._is_handle_tool():
             self.select_element(elem)
 
     def delete_element(self, element: AnnotationElement):

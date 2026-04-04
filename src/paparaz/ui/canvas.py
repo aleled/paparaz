@@ -81,6 +81,7 @@ class AnnotationCanvas(QWidget):
         self._pan_start = QPointF()
 
         self._element_clipboard: Optional[AnnotationElement] = None
+        self._click_press_pos = QPointF()  # for click-to-deselect detection
         # Snap configuration (set by editor from settings)
         self.snap_enabled: bool = True
         self.snap_to_canvas: bool = True
@@ -677,6 +678,7 @@ class AnnotationCanvas(QWidget):
             self._pan_start = event.position()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             return
+        self._click_press_pos = event.position()  # track for click-to-deselect
         if self._tool:
             pos = self._screen_to_canvas(event.position())
             # Intercept: if a non-select tool is active but cursor is on a handle,
@@ -743,6 +745,20 @@ class AnnotationCanvas(QWidget):
         if self._tool:
             pos = self._screen_to_canvas(event.position())
             self._tool.on_release(pos, event)
+            # Click-to-deselect: if user clicked (not dragged) on empty area,
+            # deselect any selected element regardless of active tool.
+            if (self.selected_element
+                    and event.button() == Qt.MouseButton.LeftButton
+                    and hasattr(self, '_click_press_pos')):
+                delta = event.position() - self._click_press_pos
+                is_click = abs(delta.x()) < 4 and abs(delta.y()) < 4
+                if is_click:
+                    hit = any(
+                        e.visible and not e.locked and e.contains_point(pos)
+                        for e in self.elements
+                    )
+                    if not hit:
+                        self.select_element(None)
 
     def contextMenuEvent(self, event):
         from PySide6.QtWidgets import QMenu

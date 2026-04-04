@@ -288,13 +288,15 @@ class _UpdateBridge(QObject):
     check_failed     = Signal(str)
 
 
-def _get_installer_url(assets: list) -> str:
-    """Find the Setup .exe asset URL, fallback to releases page."""
+def _get_installer_url(assets: list) -> str | None:
+    """Find the Setup .exe asset URL, or None if no installer is attached."""
     for asset in assets:
         name = asset.get("name", "")
         if name.lower().startswith("paparaz_setup") and name.lower().endswith(".exe"):
-            return asset.get("browser_download_url", _RELEASES_PAGE)
-    return _RELEASES_PAGE
+            url = asset.get("browser_download_url", "")
+            if url:
+                return url
+    return None
 
 
 def _fetch_latest() -> tuple[str, str]:
@@ -401,7 +403,17 @@ def check_for_updates_manual(parent: "QWidget | None" = None) -> None:
     t.start()
 
 
-def _show_download_dialog(parent, latest: str, url: str):
+def _show_download_dialog(parent, latest: str, url: str | None):
+    if url is None:
+        # No installer asset attached — open the releases page in browser
+        import subprocess
+        subprocess.Popen(["start", "", _RELEASES_PAGE], shell=True)
+        _info_box(parent, "Update Available",
+                  f"PapaRaZ v{latest} is available.\n\n"
+                  "No installer was found in the release assets.\n"
+                  "Opening the releases page in your browser.",
+                  QMessageBox.Icon.Information)
+        return
     dlg = UpdateDownloadDialog(latest, url, parent)
     dlg.exec()
 
@@ -411,6 +423,7 @@ def _info_box(parent, title: str, text: str, icon, detail: str = ""):
     msg.setWindowTitle(title)
     msg.setIcon(icon)
     msg.setText(text)
+    msg.setWindowFlags(msg.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
     if detail:
         msg.setInformativeText(detail)
     msg.setStyleSheet(

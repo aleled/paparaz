@@ -1182,6 +1182,7 @@ class EditorWindow(QWidget):
             return
         msg = QMessageBox(self)
         msg.setWindowTitle("Close Editor")
+        msg.setWindowFlags(msg.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setText("Are you sure you want to close?")
         msg.setInformativeText(

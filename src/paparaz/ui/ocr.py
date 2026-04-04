@@ -164,7 +164,8 @@ class _OcrResultDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Recognized Text")
         self.setWindowFlags(
-            self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint
+            (self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+            | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setMinimumWidth(380)
         self.setStyleSheet(_DIALOG_STYLE)
@@ -239,7 +240,12 @@ def ocr_selected_elements(canvas: "AnnotationCanvas", elements: list):
         bridge.deleteLater()
 
     def on_error(msg: str):
-        QMessageBox.critical(canvas, "OCR Error", msg)
+        err = QMessageBox(canvas)
+        err.setWindowTitle("OCR Error")
+        err.setIcon(QMessageBox.Icon.Critical)
+        err.setText(msg)
+        err.setWindowFlags(err.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        err.exec()
         bridge.deleteLater()
 
     bridge.finished.connect(on_finished)

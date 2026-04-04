@@ -76,6 +76,7 @@ class PapaRazApp(QObject):
         from PySide6.QtWidgets import QMessageBox
         msg = QMessageBox()
         msg.setWindowTitle("PapaRaZ — Crash Recovery")
+        msg.setWindowFlags(msg.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         msg.setText(f"Found {len(files)} unsaved capture(s) from a previous session.")
         msg.setInformativeText("Would you like to restore them?")
         msg.setStandardButtons(

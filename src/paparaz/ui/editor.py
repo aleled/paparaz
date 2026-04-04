@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QLabel, QFileDialog, QApplication, QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QPoint, QRectF, QPointF, QEvent, QSize, QTimer
-from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QPainter, QColor, QCursor
+from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QPainter, QPen, QColor, QCursor
 
 from paparaz.ui.icons import get_icon
 
@@ -135,7 +135,7 @@ class EditorWindow(QWidget):
 
         # Status label at bottom (minimal)
         self._status = QLabel("V:Select  P:Pen  B:Brush  H:Highlight  L:Line  A:Arrow  Q:CurvedArrow  R:Rect  E:Ellipse  T:Text  N:Num  S:Stamp  X:Erase  M:Blur  C:Crop")
-        self._status.setStyleSheet("color: rgba(255,255,255,100); font-size: 9px; padding: 2px;")
+        self._status.setStyleSheet("color: rgba(255,255,255,180); font-size: 9px; padding: 2px;")
         self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._status)
 
@@ -265,6 +265,7 @@ class EditorWindow(QWidget):
         # Canvas signals
         self._canvas.element_selected.connect(self._on_element_selected)
         self._canvas.request_text_edit.connect(self._on_text_edit_request)
+        self._canvas.zoom_changed.connect(self._on_zoom_changed)
         # Eyedropper: return to previous tool after pick, update side panel swatches
         self._canvas._eyedropper_done.connect(self._on_tool_selected)
         self._canvas.fg_color_picked.connect(self._on_eyedropper_fg)
@@ -292,23 +293,27 @@ class EditorWindow(QWidget):
         # Auto-copy the raw capture to clipboard when the editor opens
         copy_to_clipboard(screenshot)
 
+    # Theme-driven chrome colors (updated by apply_app_theme)
+    _chrome_bg = QColor(10, 10, 20)       # fully opaque — no transparency bleed
+    _chrome_accent = QColor(116, 0, 150)  # border accent from theme
+
     def paintEvent(self, event):
-        """Draw window chrome: outer shadow ring + dark background + accent border."""
+        """Draw window chrome: outer shadow ring + opaque background + themed accent border."""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # Outer dark shadow ring — visible against any desktop background
         r = self.rect()
+        # Outer dark shadow ring — visible against any desktop background
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QColor(0, 0, 0, 100))
         p.drawRoundedRect(r.adjusted(0, 0, -1, -1), 10, 10)
         p.setPen(QColor(0, 0, 0, 50))
         p.drawRoundedRect(r.adjusted(1, 1, -2, -2), 10, 10)
-        # Main background fill
-        p.setBrush(QColor(10, 10, 20, 230))
+        # Main background fill — fully opaque so toolbar/statusbar aren't see-through
+        p.setBrush(self._chrome_bg)
         p.setPen(Qt.PenStyle.NoPen)
         p.drawRoundedRect(r.adjusted(2, 2, -2, -2), 8, 8)
-        # Accent border (2 px, fully opaque so it reads against the image)
-        p.setPen(QColor(116, 0, 150, 240))
+        # Accent border from theme (2 px, fully opaque)
+        p.setPen(QPen(self._chrome_accent, 2))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawRoundedRect(r.adjusted(2, 2, -2, -2), 8, 8)
         p.end()
@@ -362,34 +367,52 @@ class EditorWindow(QWidget):
             )
             self._close_btn_overlay.raise_()
 
+    def _clear_border_cursor(self):
+        """Safely clear the border override cursor if active."""
+        if self._border_cursor_on:
+            QApplication.restoreOverrideCursor()
+            self._border_cursor_on = False
+
     def eventFilter(self, obj, event):
         et = event.type()
 
+        # Clear stale override cursor when mouse leaves the window
+        if et == QEvent.Type.Leave and obj is self:
+            self._clear_border_cursor()
+            return False
+
         if et == QEvent.Type.MouseMove:
+            # Title-bar drag
+            if event.buttons() & Qt.MouseButton.LeftButton and self._drag_pos is not None:
+                new_pos = QCursor.pos() - self._drag_pos
+                # Clamp to keep at least 80px visible on any screen edge
+                screen = self.screen()
+                if screen:
+                    sg = screen.availableGeometry()
+                    min_visible = 80
+                    nx = max(sg.left() - self.width() + min_visible,
+                             min(new_pos.x(), sg.right() - min_visible))
+                    ny = max(sg.top(),
+                             min(new_pos.y(), sg.bottom() - min_visible))
+                    new_pos = QPoint(nx, ny)
+                self.move(new_pos)
+                return False
+            # Border resize cursor (hover only, no buttons pressed)
             gpos = QCursor.pos()
             edge = self._edge_at(gpos)
-            # Use QApplication.mouseButtons() — more reliable than event.buttons()
-            # which can lag after system resize / menu dismiss.
             if edge and not QApplication.mouseButtons():
                 shape = self._CURSOR_MAP.get(edge, Qt.CursorShape.ArrowCursor)
-                # Always restore+set instead of changeOverrideCursor:
-                # changeOverrideCursor silently does nothing if the stack was
-                # externally cleared (e.g. after a QMenu closes).
-                if self._border_cursor_on:
-                    QApplication.restoreOverrideCursor()
+                self._clear_border_cursor()
                 QApplication.setOverrideCursor(shape)
                 self._border_cursor_on = True
             elif self._border_cursor_on:
-                QApplication.restoreOverrideCursor()
-                self._border_cursor_on = False
+                self._clear_border_cursor()
 
         elif et == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             gpos = event.globalPosition().toPoint()
             edge = self._edge_at(gpos)
             if edge and obj is not getattr(self, "_close_btn_overlay", None):
-                if self._border_cursor_on:
-                    QApplication.restoreOverrideCursor()
-                    self._border_cursor_on = False
+                self._clear_border_cursor()
                 self.windowHandle().startSystemResize(edge)
                 return True  # consume — don't pass to canvas/toolbar
             # Title-bar drag (no border)
@@ -399,10 +422,8 @@ class EditorWindow(QWidget):
 
         elif et == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = None
-
-        elif et == QEvent.Type.MouseMove and event.buttons() & Qt.MouseButton.LeftButton:
-            if self._drag_pos is not None:
-                self.move(QCursor.pos() - self._drag_pos)
+            # After system resize ends, ensure cursor is cleaned up
+            self._clear_border_cursor()
 
         return False  # never consume — only side-effects
 
@@ -416,7 +437,17 @@ class EditorWindow(QWidget):
 
     def mouseMoveEvent(self, event):
         if event.buttons() & Qt.MouseButton.LeftButton and self._drag_pos is not None:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            new_pos = event.globalPosition().toPoint() - self._drag_pos
+            screen = self.screen()
+            if screen:
+                sg = screen.availableGeometry()
+                min_visible = 80
+                nx = max(sg.left() - self.width() + min_visible,
+                         min(new_pos.x(), sg.right() - min_visible))
+                ny = max(sg.top(),
+                         min(new_pos.y(), sg.bottom() - min_visible))
+                new_pos = QPoint(nx, ny)
+            self.move(new_pos)
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -568,6 +599,27 @@ class EditorWindow(QWidget):
             self._initial_zoom_applied = True
             self._apply_default_zoom()
 
+    def _on_zoom_changed(self, zoom: float):
+        """Adapt window size to fit the zoomed content, clamped to screen."""
+        bg = self._canvas._background
+        if bg.isNull():
+            return
+        # Desired canvas size at this zoom level
+        img_w = int(bg.width() * zoom)
+        img_h = int(bg.height() * zoom)
+        # Account for toolbar/statusbar/margins chrome
+        chrome_w = self.width() - self._canvas.width()
+        chrome_h = self.height() - self._canvas.height()
+        desired_w = img_w + chrome_w
+        desired_h = img_h + chrome_h
+        # Clamp to screen available geometry (leave 40px margin)
+        screen = self.screen()
+        if screen:
+            sg = screen.availableGeometry()
+            desired_w = max(400, min(desired_w, sg.width() - 40))
+            desired_h = max(300, min(desired_h, sg.height() - 40))
+        self.resize(desired_w, desired_h)
+
     def _apply_default_zoom(self):
         """Set zoom level based on user preference."""
         if not self._settings_manager:
@@ -632,6 +684,9 @@ class EditorWindow(QWidget):
         # Apply to side panel (also stores theme for paintEvent)
         if hasattr(self, '_side_panel'):
             self._side_panel.apply_theme(theme)
+        # Update chrome colors from theme
+        self._chrome_bg = QColor(theme.get("bg1", "#1e1e2e"))
+        self._chrome_accent = QColor(theme.get("accent", "#740096"))
         # Update selection handle + border accent color to match theme
         set_selection_accent(theme.get("accent", "#740096"))
         if hasattr(self, '_canvas'):

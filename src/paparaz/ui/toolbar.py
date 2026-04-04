@@ -76,6 +76,7 @@ TOOL_DEFS = [
     (ToolType.SLICE,       "slice",       "Slice (Z)"),
     (ToolType.EYEDROPPER,  "eyedropper",  "Eyedropper (I)"),
     (ToolType.MAGNIFIER,   "magnifier",   "Magnifier (G)"),
+    (ToolType.MEASURE,     "measure",     "Measure (D)"),
 ]
 
 ACTION_DEFS = [

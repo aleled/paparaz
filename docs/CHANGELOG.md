@@ -1,5 +1,62 @@
 # PapaRaZ - Changelog
 
+## [0.9.8] - 2026-04-04
+
+### Measure Tool (D)
+- New `MeasureTool` and `MeasureElement` for distance and angle measurement
+- Draws annotated line with pixel distance and degree readout
+- Keyboard shortcut **D**, toolbar icon, side panel section
+
+### Status Bar
+- New `StatusBar` widget at bottom of editor with live info:
+  - Mouse position (X, Y), selection dimensions, canvas size, element count
+  - Editable zoom combo with presets (25%–400%, Fit) — type any value
+  - Shortcut hints strip showing all tool keys
+- Detachable `InfoWindow` for floating status display
+
+### Capture Overlay — Pixel Precision
+- **Magnifier loupe** with pixel grid, X/Y axis lines, center crosshair, and hex color readout
+- **Ctrl+Scroll** adjusts magnifier zoom level (source pixel count 5–51)
+- **Shift+Scroll** adjusts magnifier display size (80–320px)
+- **Arrow keys before first click** move a virtual precision cursor (Shift = 10px steps)
+- **Arrow keys during drag** fine-tune the selection endpoint with loupe tracking
+- **On-screen help overlay** at bottom-center showing all available keyboard controls
+- Handles reduced from large circles to crisp 6px squares
+- Selection auto-confirms on mouse release (no extra Enter/double-click needed)
+
+### System Cursor Capture
+- Mouse cursor captured as a deletable `ImageElement` on every capture
+- Win32 API pipeline: `GetCursorInfo` → `CopyIcon` → `GetIconInfo` → `DrawIconEx`
+- Captures the actual system cursor (arrow, hand, I-beam, etc.) with correct hotspot offset
+- Cursor element is auto-selected on editor open — press DEL to remove
+- Works for region, fullscreen, active window, and repeat captures
+
+### Multi-Monitor Capture Fix
+- `_get_monitor_physical_rect()` using Win32 `EnumDisplayMonitors` for correct physical pixel coordinates
+- Fixes freeze and offset capture when monitors have different resolutions/DPI
+
+### Recent Captures — Auto-populate
+- Every capture is auto-saved to `~/.paparaz/recent/` with timestamp filename
+- Tray menu "Recent Captures" populates immediately, no explicit save needed
+- Stale entries pruned on startup; old auto-saves cleaned beyond `max_recent`
+- File-not-found errors handled gracefully with tray notification
+
+### Text Tool Enhancements
+- **Long word wrapping**: words exceeding box width now break at character boundaries
+- **Live property editing**: font size, font family, color, bold, italic, and all text properties now update the actively editing text element in real-time
+- **Rotated text editing**: text boxes maintain rotation during editing — no more snap to 0°
+- **Click/resize with rotation**: cursor positioning and resize handle work correctly on rotated text via coordinate un-rotation
+
+### Editor Window Improvements
+- Removed `WA_TranslucentBackground` — opaque palette-based background eliminates resize flickering
+- Enhanced close dialog with professional wording and styled buttons
+- Fixed `QFont::setPointSize: Point size <= 0` warnings (6 locations guarded)
+
+### Fill Tool Fix
+- Fill tool now creates a transparent `ImageElement` overlay instead of painting behind existing elements
+
+---
+
 ## [0.9.7] - 2026-04-02
 
 ### Element Serialization

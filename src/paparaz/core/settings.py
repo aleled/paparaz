@@ -79,7 +79,7 @@ class AppSettings:
     default_zoom: str = "fit"                # "fit" | "100" | "fill" | "remember"
     last_zoom_level: float = 1.0             # saved when default_zoom == "remember"
     # Capture
-    capture_cursor: bool = False             # include mouse cursor in screenshots
+    capture_cursor: bool = True              # include mouse cursor in screenshots (as element)
     capture_sound: bool = False              # play shutter sound on capture
     # Output
     png_compression: int = 6                 # 0=fast/large .. 9=slow/small

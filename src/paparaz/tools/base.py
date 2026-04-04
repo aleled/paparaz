@@ -30,6 +30,7 @@ class ToolType(Enum):
     SLICE = auto()
     EYEDROPPER = auto()
     MAGNIFIER = auto()
+    MEASURE = auto()
 
 
 class BaseTool:

@@ -71,13 +71,13 @@ class TestToolbarButtonCount:
         self.tb = MultiEdgeToolbar()
 
     def test_tool_defs_count(self):
-        assert N_TOOLS == 19
+        assert N_TOOLS == 20
 
     def test_action_defs_count(self):
         assert N_ACTIONS == 12
 
     def test_total_buttons(self):
-        assert N_TOTAL == 31
+        assert N_TOTAL == 32
 
     def test_all_buttons_created(self):
         assert len(self.tb._buttons) == N_TOTAL
@@ -259,8 +259,9 @@ class TestEditorWindowStructure:
         flags = self.editor.windowFlags()
         assert flags & Qt.WindowType.Window
 
-    def test_translucent_background(self):
-        assert self.editor.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    def test_opaque_background(self):
+        assert not self.editor.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        assert self.editor.autoFillBackground()
 
     def test_not_delete_on_close(self):
         assert not self.editor.testAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
@@ -315,18 +316,18 @@ class TestEditorCloseAndStatus:
     def test_close_button_tooltip(self):
         assert self.editor._close_btn_overlay.toolTip() == "Close (Esc)"
 
-    def test_status_label_exists(self):
-        assert hasattr(self.editor, '_status')
-        assert isinstance(self.editor._status, QLabel)
+    def test_status_bar_exists(self):
+        assert hasattr(self.editor, '_status_bar')
 
-    def test_status_label_has_shortcuts(self):
-        text = self.editor._status.text()
+    def test_shortcut_hint_has_shortcuts(self):
+        text = self.editor._shortcut_hint.text()
         assert "V:Select" in text
         assert "P:Pen" in text
         assert "T:Text" in text
+        assert "D:Measure" in text
 
-    def test_status_label_centered(self):
-        align = self.editor._status.alignment()
+    def test_shortcut_hint_centered(self):
+        align = self.editor._shortcut_hint.alignment()
         assert align & Qt.AlignmentFlag.AlignCenter
 
 
@@ -371,7 +372,7 @@ class TestEditorTools:
         self.editor = make_editor()
 
     def test_all_tools_registered(self):
-        assert len(self.editor._tools) == 19
+        assert len(self.editor._tools) == 20
 
     def test_tool_types_match_defs(self):
         for tt, _, _ in TOOL_DEFS:

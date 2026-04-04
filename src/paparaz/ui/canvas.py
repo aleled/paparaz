@@ -49,6 +49,7 @@ class AnnotationCanvas(QWidget):
     _eyedropper_done = Signal(object)   # ToolType — return-to-prev-tool signal
     fg_color_picked = Signal(str)       # eyedropper fg pick
     bg_color_picked = Signal(str)       # eyedropper bg pick
+    mouse_moved = Signal(float, float)  # canvas-space x, y
 
     def __init__(self, background: QPixmap, parent=None):
         super().__init__(parent)
@@ -97,6 +98,7 @@ class AnnotationCanvas(QWidget):
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAcceptDrops(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._update_size()
 
     def _update_size(self):
@@ -225,6 +227,7 @@ class AnnotationCanvas(QWidget):
             self.update()
 
     def set_font_size(self, size: int):
+        size = max(1, size)
         self._font_size = size
         if self.selected_element:
             old = self.selected_element.style.font_size
@@ -711,10 +714,12 @@ class AnnotationCanvas(QWidget):
             return
         if self._handle_active:
             pos = self._screen_to_canvas(event.position())
+            self.mouse_moved.emit(pos.x(), pos.y())
             self._handle_select.on_move(pos, event)
             return
         if self._tool:
             pos = self._screen_to_canvas(event.position())
+            self.mouse_moved.emit(pos.x(), pos.y())
             # If buttons pressed: tool drag. Otherwise: hover.
             if event.buttons() != Qt.MouseButton.NoButton:
                 self._tool.on_move(pos, event)

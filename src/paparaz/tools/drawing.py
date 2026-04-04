@@ -6,7 +6,7 @@ from paparaz.tools.base import BaseTool, ToolType
 from paparaz.core.history import Command
 from paparaz.core.elements import (
     PenElement, BrushElement, HighlightElement, LineElement, ArrowElement,
-    CurvedArrowElement, RectElement, EllipseElement, ElementStyle,
+    CurvedArrowElement, RectElement, EllipseElement, MeasureElement, ElementStyle,
 )
 
 
@@ -354,6 +354,15 @@ class CurvedArrowTool(BaseTool):
             painter.restore()
             if self._hover_pos:
                 _draw_curved_hint(painter, self._hover_pos, "Click to commit — Enter commit — Esc cancel")
+
+
+class MeasureTool(LineTool):
+    """Dimension-line tool — draws a MeasureElement showing pixel distance."""
+    tool_type = ToolType.MEASURE
+
+    def on_press(self, pos: QPointF, event: QMouseEvent):
+        style = self.canvas.current_style()
+        self._current = MeasureElement(pos, pos, style)
 
 
 def _draw_curved_hint(painter: QPainter, pos: QPointF, text: str):

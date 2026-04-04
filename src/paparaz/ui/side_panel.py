@@ -137,6 +137,7 @@ TOOL_SECTIONS = {
     ToolType.CROP:        _sec(color=False),
     ToolType.SLICE:       _sec(color=False),
     ToolType.EYEDROPPER:  _sec(color=False),
+    ToolType.MEASURE:     _sec(color=True, stroke=True, effects=True),
 }
 
 

@@ -91,8 +91,17 @@ class TextTool(BaseTool):
             best = i
         return max(0, min(best, len(line)))
 
+    @staticmethod
+    def _unrotate(pos: QPointF, elem: TextElement) -> QPointF:
+        """Un-rotate a canvas point into the element's local coordinate space."""
+        if elem.rotation:
+            from paparaz.core.elements import _rotate_point
+            return _rotate_point(pos, elem.rect.center(), -elem.rotation)
+        return pos
+
     def _pos_to_cursor(self, pos: QPointF, elem: TextElement) -> int:
         """Map a canvas click position to the nearest cursor index in elem.text."""
+        pos = self._unrotate(pos, elem)
         font = elem._make_font()
         fm = QFontMetrics(font)
         pad = elem.bg_padding if elem.bg_enabled else 4
@@ -113,6 +122,7 @@ class TextTool(BaseTool):
         return vl_start + self._x_to_char(vl, pos.x() - line_x, fm)
 
     def _is_resize_handle(self, pos: QPointF, elem: TextElement) -> bool:
+        pos = self._unrotate(pos, elem)
         hx = elem.rect.right() + 6
         hy = elem.rect.center().y()
         return abs(pos.x() - hx) <= 9 and abs(pos.y() - hy) <= 16
@@ -124,7 +134,8 @@ class TextTool(BaseTool):
             # Resize handle drag
             if self._is_resize_handle(pos, self._active_text):
                 self._resizing = True
-                self._resize_start_x = pos.x()
+                local = self._unrotate(pos, self._active_text)
+                self._resize_start_x = local.x()
                 self._resize_start_w = self._active_text.rect.width()
                 return
             # Click inside active box → reposition cursor (no commit)
@@ -165,7 +176,8 @@ class TextTool(BaseTool):
 
     def on_move(self, pos: QPointF, event: QMouseEvent):
         if self._resizing and self._active_text:
-            new_w = max(60.0, self._resize_start_w + (pos.x() - self._resize_start_x))
+            local = self._unrotate(pos, self._active_text)
+            new_w = max(60.0, self._resize_start_w + (local.x() - self._resize_start_x))
             r = self._active_text.rect
             self._active_text.rect = QRectF(r.left(), r.top(), new_w, r.height())
             self._active_text.auto_size()
@@ -378,7 +390,7 @@ class TextTool(BaseTool):
         if self._active_text or not self._hover_pos:
             return
         style = self.canvas.current_style()
-        font = QFont(style.font_family, style.font_size)
+        font = QFont(style.font_family, max(1, style.font_size))
         font.setBold(self.bold)
         font.setItalic(self.italic)
         fm = QFontMetrics(font)
@@ -465,12 +477,14 @@ class TextTool(BaseTool):
         self.bold = enabled
         if self._active_text:
             self._active_text.bold = enabled
+            self._active_text.auto_size()
             self.canvas.set_preview(self._active_text)
 
     def set_italic(self, enabled: bool):
         self.italic = enabled
         if self._active_text:
             self._active_text.italic = enabled
+            self._active_text.auto_size()
             self.canvas.set_preview(self._active_text)
 
     def set_underline(self, enabled: bool):
@@ -550,7 +564,7 @@ class NumberingTool(BaseTool):
 
         # Ghost number
         painter.setPen(QColor(255, 255, 255, 150))
-        font = QFont(style.font_family, int(size * 0.4), QFont.Weight.Bold)
+        font = QFont(style.font_family, max(1, int(size * 0.4)), QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(NumberElement._next_number))
 
@@ -706,28 +720,20 @@ class FillTool(BaseTool):
         if not filled:
             return
 
-        # Paint filled pixels directly onto the canvas background (avoids alpha
-        # compositing artifacts that occur when using a transparent overlay image).
-        old_bg = self.canvas._background
-        bg_img = old_bg.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+        # Build a transparent overlay with only the filled pixels.
+        # This layers correctly on top of all existing elements so the fill
+        # is always visible regardless of what content is underneath.
+        bg = self.canvas._background
+        overlay = QImage(bg.width(), bg.height(), QImage.Format.Format_ARGB32)
+        overlay.fill(Qt.GlobalColor.transparent)
         fill_rgba = fill_qcolor.rgba()
         for fx, fy in filled:
-            bg_img.setPixel(fx, fy, fill_rgba)
+            overlay.setPixel(fx, fy, fill_rgba)
 
-        new_bg = QPixmap.fromImage(bg_img)
-        old_bg_copy = QPixmap(old_bg)
-
-        from paparaz.core.history import Command
-
-        def do():
-            self.canvas._background = new_bg
-            self.canvas.update()
-
-        def undo():
-            self.canvas._background = QPixmap(old_bg_copy)
-            self.canvas.update()
-
-        self.canvas.history.execute(Command("Fill", do, undo))
+        overlay_pix = QPixmap.fromImage(overlay)
+        elem = ImageElement(overlay_pix, QPointF(0, 0))
+        elem.locked = True  # prevent accidental drag of full-canvas overlay
+        self.canvas.add_element(elem)
 
     def paint_hover(self, painter: QPainter):
         """Show crosshair + fill color dot at cursor."""

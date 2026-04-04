@@ -142,6 +142,17 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Localization (i18n)
 - [ ] Accessibility (screen reader support)
 - [x] Auto-save / crash recovery
+- [x] Measure tool (distance + angle readout, shortcut D)
+- [x] Status bar (mouse position, selection size, canvas dims, element count, zoom control)
+- [x] Pixel-precise capture overlay (magnifier loupe, arrow-key precision, on-screen help)
+- [x] System cursor capture as deletable element (Win32 GetCursorInfo pipeline)
+- [x] Multi-monitor DPI fix (EnumDisplayMonitors for physical pixel coordinates)
+- [x] Auto-populate recent captures (auto-save on capture, stale cleanup)
+- [x] Text box long word wrapping (character-level break)
+- [x] Live text property editing during active editing (font, size, color, bold, etc.)
+- [x] Rotated text editing (maintain rotation, coordinate un-rotation for clicks/resize)
+- [x] Resize flicker fix (opaque palette-based background)
+- [x] Fill tool overlay fix (ImageElement on top, not behind)
 
 ### Settings — Behavior & Capture (PicPick-inspired gaps)
 - [x] Multiple capture hotkeys: full-screen (Ctrl+PrtScn), active window (Alt+PrtScn), repeat last (Shift+PrtScn)
@@ -194,6 +205,6 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Not started
 - [x] Completed
 
-## Current Status: Phase 7 complete — comprehensive QA, serialization, robustness fixes
-**Version**: 0.9.7
-**Last updated**: 2026-04-02
+## Current Status: Phase 8 complete — capture precision, measure tool, text fixes, status bar
+**Version**: 0.9.8
+**Last updated**: 2026-04-04

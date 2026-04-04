@@ -55,6 +55,8 @@ class PapaRazApp(QObject):
 
     def start(self):
         self._tray.show()
+        # Clean up stale entries (files that no longer exist)
+        self._cleanup_recent_captures()
         self._tray.update_recent(self._settings.settings.recent_captures)
         if self._settings.settings.show_tray_notification:
             self._tray.show_message("PapaRaZ", "Ready! Press PrintScreen to capture.")
@@ -133,9 +135,8 @@ class PapaRazApp(QObject):
         # Capture only that monitor (physical pixels)
         self._full_capture = capture_monitor(target_screen)
 
-        # Overlay cursor if requested
-        if getattr(self._settings.settings, 'capture_cursor', False):
-            self._draw_cursor_on_capture(target_screen, cursor_pos)
+        # Remember cursor position for element creation after region selection
+        self._capture_cursor_pos = cursor_pos
 
         # Play shutter sound if enabled
         if getattr(self._settings.settings, 'capture_sound', False):
@@ -178,8 +179,14 @@ class PapaRazApp(QObject):
             self._last_capture_rect = rect
             self._last_capture_screen = self._capture_screen
 
+            # Build cursor element (always — user can DEL to remove)
+            cursor_elem = self._cursor_element_for_region(
+                self._capture_screen,
+                getattr(self, '_capture_cursor_pos', QCursor.pos()),
+                rect)
+
             self._restore_hidden_editors()
-            self._open_editor(cropped)
+            self._open_editor(cropped, cursor_element=cursor_elem)
 
     def _on_selection_cancelled(self):
         if self._overlay:
@@ -206,11 +213,6 @@ class PapaRazApp(QObject):
         pixmap = capture_monitor(target_screen)
         self._capture_screen = target_screen
 
-        if getattr(self._settings.settings, 'capture_cursor', False):
-            self._full_capture = pixmap
-            self._draw_cursor_on_capture(target_screen, cursor_pos)
-            pixmap = self._full_capture
-
         if getattr(self._settings.settings, 'capture_sound', False):
             self._play_shutter_sound()
 
@@ -224,8 +226,11 @@ class PapaRazApp(QObject):
                 Qt.TransformationMode.SmoothTransformation,
             )
 
+        # Build cursor element (always — user can DEL to remove)
+        cursor_elem = self._cursor_element_fullscreen(target_screen, cursor_pos)
+
         self._restore_hidden_editors()
-        self._open_editor(pixmap)
+        self._open_editor(pixmap, cursor_element=cursor_elem)
 
     def _capture_active_window(self):
         """Capture the currently active (foreground) window."""
@@ -278,8 +283,21 @@ class PapaRazApp(QObject):
                     Qt.TransformationMode.SmoothTransformation,
                 )
 
+        # Build cursor element if enabled
+        # Build cursor element (always — user can DEL to remove)
+        cursor_elem = None
+        from PySide6.QtCore import QPointF
+        from paparaz.core.elements import ImageElement
+        cursor_pos = QCursor.pos()
+        dpr_val = screen.devicePixelRatio() if screen else 1.0
+        rel_x = (cursor_pos.x() - x) / dpr_val
+        rel_y = (cursor_pos.y() - y) / dpr_val
+        if 0 <= rel_x < pixmap.width() and 0 <= rel_y < pixmap.height():
+            cursor_pix, hx, hy = self._capture_system_cursor()
+            cursor_elem = ImageElement(cursor_pix, QPointF(rel_x - hx, rel_y - hy))
+
         self._restore_hidden_editors()
-        self._open_editor(pixmap)
+        self._open_editor(pixmap, cursor_element=cursor_elem)
 
     def _capture_repeat_last(self):
         """Re-capture the exact same region as the last selection."""
@@ -297,10 +315,7 @@ class PapaRazApp(QObject):
         pixmap = capture_monitor(screen)
         self._capture_screen = screen
         self._full_capture = pixmap
-
-        if getattr(self._settings.settings, 'capture_cursor', False):
-            self._draw_cursor_on_capture(screen, QCursor.pos())
-            pixmap = self._full_capture
+        cursor_pos = QCursor.pos()
 
         if getattr(self._settings.settings, 'capture_sound', False):
             self._play_shutter_sound()
@@ -322,8 +337,11 @@ class PapaRazApp(QObject):
                 Qt.TransformationMode.SmoothTransformation,
             )
 
+        # Build cursor element (always — user can DEL to remove)
+        cursor_elem = self._cursor_element_for_region(screen, cursor_pos, rect)
+
         self._restore_hidden_editors()
-        self._open_editor(cropped)
+        self._open_editor(cropped, cursor_element=cursor_elem)
 
     def _restore_hidden_editors(self):
         """Re-show editors that were hidden before capture."""
@@ -331,34 +349,217 @@ class PapaRazApp(QObject):
             if not ed.isVisible():
                 ed.show()
 
-    def _draw_cursor_on_capture(self, screen, cursor_pos: QPoint):
-        """Stamp the current mouse cursor onto the full capture pixmap."""
-        from PySide6.QtGui import QPainter, QPixmap as _QP
-        geo = screen.geometry()
-        dpr = screen.devicePixelRatio()
-        # Cursor position in physical pixels relative to the monitor
-        cx = int((cursor_pos.x() - geo.x()) * dpr)
-        cy = int((cursor_pos.y() - geo.y()) * dpr)
-        # Draw a simple arrow cursor (16×24 px)
-        cursor_pix = _QP(16, 24)
-        cursor_pix.fill(Qt.GlobalColor.transparent)
-        cp = QPainter(cursor_pix)
-        cp.setRenderHint(QPainter.RenderHint.Antialiasing)
-        from PySide6.QtGui import QPen, QBrush, QColor, QPolygonF
+    @staticmethod
+    def _capture_system_cursor() -> "tuple[QPixmap, int, int]":
+        """Capture the actual system cursor image using Win32 API.
+
+        Returns (pixmap, hotspot_x, hotspot_y).  The hotspot is the offset
+        from the cursor image's top-left to the click point — the element
+        must be placed at (cursor_pos - hotspot) so the tip aligns correctly.
+        Falls back to a generic arrow if the API fails.
+        """
+        import ctypes
+        from ctypes import wintypes
+        from PySide6.QtGui import QImage, QPixmap as _QP
+
+        hotspot_x, hotspot_y = 0, 0
+
+        try:
+            # --- GetCursorInfo ---
+            class CURSORINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.DWORD),
+                    ("flags", wintypes.DWORD),
+                    ("hCursor", wintypes.HANDLE),
+                    ("ptScreenPos", wintypes.POINT),
+                ]
+
+            ci = CURSORINFO()
+            ci.cbSize = ctypes.sizeof(CURSORINFO)
+            if not ctypes.windll.user32.GetCursorInfo(ctypes.byref(ci)):
+                raise OSError("GetCursorInfo failed")
+
+            # CURSOR_SHOWING = 0x00000001
+            if not (ci.flags & 1):
+                raise OSError("Cursor hidden")
+
+            # Copy the cursor handle so we can query it
+            hicon = ctypes.windll.user32.CopyIcon(ci.hCursor)
+            if not hicon:
+                raise OSError("CopyIcon failed")
+
+            # --- GetIconInfo → hotspot + mask/color bitmaps ---
+            class ICONINFO(ctypes.Structure):
+                _fields_ = [
+                    ("fIcon", wintypes.BOOL),
+                    ("xHotspot", wintypes.DWORD),
+                    ("yHotspot", wintypes.DWORD),
+                    ("hbmMask", wintypes.HBITMAP),
+                    ("hbmColor", wintypes.HBITMAP),
+                ]
+
+            ii = ICONINFO()
+            if not ctypes.windll.user32.GetIconInfo(hicon, ctypes.byref(ii)):
+                ctypes.windll.user32.DestroyIcon(hicon)
+                raise OSError("GetIconInfo failed")
+
+            hotspot_x = ii.xHotspot
+            hotspot_y = ii.yHotspot
+
+            # --- Render cursor via DrawIconEx onto a DIB section ---
+            # Determine cursor size from the mask bitmap
+            class BITMAP(ctypes.Structure):
+                _fields_ = [
+                    ("bmType", ctypes.c_long),
+                    ("bmWidth", ctypes.c_long),
+                    ("bmHeight", ctypes.c_long),
+                    ("bmWidthBytes", ctypes.c_long),
+                    ("bmPlanes", wintypes.WORD),
+                    ("bmBitsPixel", wintypes.WORD),
+                    ("bmBits", ctypes.c_void_p),
+                ]
+
+            bm = BITMAP()
+            ctypes.windll.gdi32.GetObjectW(
+                ii.hbmMask, ctypes.sizeof(BITMAP), ctypes.byref(bm))
+            cur_w = bm.bmWidth
+            # If no color bitmap, mask height is 2× (AND + XOR masks stacked)
+            cur_h = bm.bmHeight // 2 if not ii.hbmColor else bm.bmHeight
+
+            # Clean up GDI bitmaps from GetIconInfo
+            if ii.hbmMask:
+                ctypes.windll.gdi32.DeleteObject(ii.hbmMask)
+            if ii.hbmColor:
+                ctypes.windll.gdi32.DeleteObject(ii.hbmColor)
+
+            # Create a 32-bit ARGB DIB to draw into
+            class BITMAPINFOHEADER(ctypes.Structure):
+                _fields_ = [
+                    ("biSize", wintypes.DWORD),
+                    ("biWidth", ctypes.c_long),
+                    ("biHeight", ctypes.c_long),
+                    ("biPlanes", wintypes.WORD),
+                    ("biBitCount", wintypes.WORD),
+                    ("biCompression", wintypes.DWORD),
+                    ("biSizeImage", wintypes.DWORD),
+                    ("biXPelsPerMeter", ctypes.c_long),
+                    ("biYPelsPerMeter", ctypes.c_long),
+                    ("biClrUsed", wintypes.DWORD),
+                    ("biClrImportant", wintypes.DWORD),
+                ]
+
+            bmi = BITMAPINFOHEADER()
+            bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            bmi.biWidth = cur_w
+            bmi.biHeight = -cur_h  # top-down
+            bmi.biPlanes = 1
+            bmi.biBitCount = 32
+            bmi.biCompression = 0  # BI_RGB
+
+            hdc_screen = ctypes.windll.user32.GetDC(None)
+            hdc_mem = ctypes.windll.gdi32.CreateCompatibleDC(hdc_screen)
+            bits_ptr = ctypes.c_void_p()
+            hbmp = ctypes.windll.gdi32.CreateDIBSection(
+                hdc_mem, ctypes.byref(bmi), 0,
+                ctypes.byref(bits_ptr), None, 0)
+            old_bmp = ctypes.windll.gdi32.SelectObject(hdc_mem, hbmp)
+
+            # Clear to transparent black
+            buf_size = cur_w * cur_h * 4
+            ctypes.memset(bits_ptr, 0, buf_size)
+
+            # DI_NORMAL = 0x0003 (DI_MASK | DI_IMAGE)
+            ctypes.windll.user32.DrawIconEx(
+                hdc_mem, 0, 0, hicon,
+                cur_w, cur_h, 0, None, 0x0003)
+
+            # Read pixels
+            buf = (ctypes.c_ubyte * buf_size)()
+            ctypes.memmove(buf, bits_ptr, buf_size)
+
+            ctypes.windll.gdi32.SelectObject(hdc_mem, old_bmp)
+            ctypes.windll.gdi32.DeleteObject(hbmp)
+            ctypes.windll.gdi32.DeleteDC(hdc_mem)
+            ctypes.windll.user32.ReleaseDC(None, hdc_screen)
+            ctypes.windll.user32.DestroyIcon(hicon)
+
+            # Fix alpha: DrawIconEx on a DIB sometimes leaves alpha=0 for
+            # opaque pixels.  If every pixel has alpha==0 the cursor would be
+            # invisible, so detect that and set alpha=255 for non-black pixels.
+            has_alpha = False
+            for i in range(3, buf_size, 4):
+                if buf[i] != 0:
+                    has_alpha = True
+                    break
+            if not has_alpha:
+                for i in range(0, buf_size, 4):
+                    b, g, r = buf[i], buf[i + 1], buf[i + 2]
+                    if b or g or r:
+                        buf[i + 3] = 255
+
+            img = QImage(bytes(buf), cur_w, cur_h, cur_w * 4,
+                         QImage.Format.Format_ARGB32)
+            img = img.copy()
+            pix = _QP.fromImage(img)
+            if pix.isNull():
+                raise OSError("Null pixmap")
+            return pix, hotspot_x, hotspot_y
+
+        except (OSError, Exception):
+            # Fallback: generic arrow
+            from PySide6.QtGui import QPainter, QPixmap as _QP, QPen, QBrush, QColor, QPolygonF
+            from PySide6.QtCore import QPointF
+            cursor_pix = _QP(32, 48)
+            cursor_pix.fill(Qt.GlobalColor.transparent)
+            cp = QPainter(cursor_pix)
+            cp.setRenderHint(QPainter.RenderHint.Antialiasing)
+            arrow = QPolygonF([
+                QPointF(0, 0), QPointF(0, 36), QPointF(9, 28),
+                QPointF(16, 44), QPointF(22, 40), QPointF(15, 25),
+                QPointF(24, 24), QPointF(0, 0),
+            ])
+            cp.setPen(QPen(QColor("black"), 2))
+            cp.setBrush(QBrush(QColor("white")))
+            cp.drawPolygon(arrow)
+            cp.end()
+            return cursor_pix, 0, 0
+
+    def _cursor_element_for_region(self, screen, cursor_pos: QPoint,
+                                   region: QRect) -> "ImageElement | None":
+        """Build an ImageElement for the mouse cursor, positioned relative to
+        the cropped region.  Returns None if cursor is outside the region."""
         from PySide6.QtCore import QPointF
-        arrow = QPolygonF([
-            QPointF(0, 0), QPointF(0, 18), QPointF(4.5, 14),
-            QPointF(8, 22), QPointF(11, 20), QPointF(7.5, 12.5),
-            QPointF(12, 12), QPointF(0, 0),
-        ])
-        cp.setPen(QPen(QColor("black"), 1))
-        cp.setBrush(QBrush(QColor("white")))
-        cp.drawPolygon(arrow)
-        cp.end()
-        # Paint cursor onto full capture
-        p = QPainter(self._full_capture)
-        p.drawPixmap(cx, cy, cursor_pix)
-        p.end()
+        from paparaz.core.elements import ImageElement
+
+        geo = screen.geometry()
+        # Cursor in logical pixels relative to the monitor
+        cx = cursor_pos.x() - geo.x()
+        cy = cursor_pos.y() - geo.y()
+
+        # Check if cursor falls inside the captured region
+        if not region.contains(QPoint(cx, cy)):
+            return None
+
+        # Position relative to the cropped region's top-left, adjusted for hotspot
+        cursor_pix, hx, hy = self._capture_system_cursor()
+        rel_x = cx - region.x() - hx
+        rel_y = cy - region.y() - hy
+
+        elem = ImageElement(cursor_pix, QPointF(rel_x, rel_y))
+        return elem
+
+    def _cursor_element_fullscreen(self, screen, cursor_pos: QPoint) -> "ImageElement | None":
+        """Build an ImageElement for the mouse cursor on a fullscreen capture."""
+        from PySide6.QtCore import QPointF
+        from paparaz.core.elements import ImageElement
+
+        geo = screen.geometry()
+        cursor_pix, hx, hy = self._capture_system_cursor()
+        cx = cursor_pos.x() - geo.x() - hx
+        cy = cursor_pos.y() - geo.y() - hy
+
+        elem = ImageElement(cursor_pix, QPointF(cx, cy))
+        return elem
 
     def _play_shutter_sound(self):
         """Play a camera shutter sound effect."""
@@ -369,7 +570,8 @@ class PapaRazApp(QObject):
         except Exception:
             pass
 
-    def _open_editor(self, pixmap: QPixmap, elements: list = None):
+    def _open_editor(self, pixmap: QPixmap, elements: list = None,
+                     cursor_element=None):
         editor = EditorWindow(pixmap, settings_manager=self._settings)
         self._editors.append(editor)
         editor.closed.connect(lambda e=editor: self._on_editor_closed(e))
@@ -378,6 +580,14 @@ class PapaRazApp(QObject):
         if elements:
             editor._canvas.elements = elements
             editor._canvas.update()
+
+        # Insert cursor as a deletable element — selected by default
+        if cursor_element is not None:
+            editor._canvas.add_element(cursor_element, auto_select=False)
+            editor._canvas.select_element(cursor_element)
+
+        # Auto-save capture to recent so the tray menu is always populated
+        self._auto_save_recent(pixmap)
 
         # Restore saved geometry or size to capture + toolbar chrome
         saved_geo = getattr(self._settings.settings, 'window_geometry', '')
@@ -409,6 +619,31 @@ class PapaRazApp(QObject):
                 editor.setGeometry(x, y, win_w, win_h)
         editor.show()
 
+    def _auto_save_recent(self, pixmap: QPixmap):
+        """Save capture to a temp directory and add to recent captures list."""
+        from pathlib import Path
+        from datetime import datetime
+        recent_dir = Path.home() / ".paparaz" / "recent"
+        recent_dir.mkdir(parents=True, exist_ok=True)
+
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        path = recent_dir / f"capture_{ts}.png"
+        pixmap.save(str(path), "PNG")
+
+        self._settings.add_recent(str(path))
+        self._tray.update_recent(self._settings.settings.recent_captures)
+
+        # Prune old recent files: keep only the latest max_recent
+        max_keep = self._settings.settings.max_recent
+        files = sorted(recent_dir.glob("capture_*.png"), key=lambda f: f.stat().st_mtime, reverse=True)
+        for old in files[max_keep:]:
+            try:
+                # Only delete if no longer in recent list
+                if str(old) not in self._settings.settings.recent_captures:
+                    old.unlink()
+            except OSError:
+                pass
+
     def _on_file_saved(self, path: str):
         """Record saved file in recent captures and refresh tray menu."""
         self._settings.add_recent(path)
@@ -429,6 +664,15 @@ class PapaRazApp(QObject):
             pixmap = QPixmap(path)
             if not pixmap.isNull():
                 self._open_editor(pixmap)
+
+    def _cleanup_recent_captures(self):
+        """Remove entries for files that no longer exist."""
+        from pathlib import Path
+        orig = self._settings.settings.recent_captures
+        valid = [p for p in orig if Path(p).exists()]
+        if len(valid) != len(orig):
+            self._settings.settings.recent_captures = valid
+            self._settings.save()
 
     def _open_recent(self, path: str):
         from pathlib import Path

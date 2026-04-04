@@ -169,6 +169,14 @@ ICONS_SVG = {
       <text x="7" y="13" fill="#80CBC4" font-size="8" font-weight="bold" font-family="sans-serif">2×</text>
     </svg>""",
 
+    # Measure — dimension line with tick marks
+    "measure": """<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <line x1="3" y1="12" x2="21" y2="12" stroke="#FFD54F" stroke-width="1.5"/>
+      <line x1="3" y1="8" x2="3" y2="16" stroke="#FFD54F" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="21" y1="8" x2="21" y2="16" stroke="#FFD54F" stroke-width="1.5" stroke-linecap="round"/>
+      <text x="12" y="10" fill="#FFD54F" font-size="7" font-weight="bold" font-family="sans-serif" text-anchor="middle">px</text>
+    </svg>""",
+
     # ── ACTION ICONS ─────────────────────────────────────────────────────────
 
     "undo": """<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

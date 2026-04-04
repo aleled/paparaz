@@ -75,6 +75,7 @@ class ElementType(Enum):
     IMAGE = auto()
     STAMP = auto()
     MAGNIFIER = auto()
+    MEASURE = auto()
 
 
 # Line cap/join constants for UI
@@ -925,7 +926,7 @@ class TextElement(AnnotationElement):
         self.rect = QRectF(value.x(), value.y(), self.rect.width(), self.rect.height())
 
     def _make_font(self) -> QFont:
-        font = QFont(self.style.font_family, self.style.font_size)
+        font = QFont(self.style.font_family, max(1, self.style.font_size))
         font.setBold(self.bold)
         font.setItalic(self.italic)
         font.setUnderline(self.underline)
@@ -936,8 +937,26 @@ class TextElement(AnnotationElement):
         return self.rect
 
     @staticmethod
+    def _break_word(word: str, fm: QFontMetrics, max_w: float) -> list[str]:
+        """Break a single word into chunks that fit within max_w pixels."""
+        if not word or fm.horizontalAdvance(word) <= max_w:
+            return [word]
+        chunks = []
+        start = 0
+        for i in range(1, len(word) + 1):
+            if fm.horizontalAdvance(word[start:i]) > max_w and i > start + 1:
+                chunks.append(word[start:i - 1])
+                start = i - 1
+        if start < len(word):
+            chunks.append(word[start:])
+        return chunks
+
+    @staticmethod
     def _wrap_lines(text: str, fm: QFontMetrics, max_w: float) -> list:
-        """Word-wrap `text` (which may contain \\n) into display lines <= max_w px wide."""
+        """Word-wrap `text` (which may contain \\n) into display lines <= max_w px wide.
+
+        Long words that exceed max_w are broken at character boundaries.
+        """
         if max_w <= 0:
             return (text or "").split("\n") or [""]
         result = []
@@ -946,14 +965,24 @@ class TextElement(AnnotationElement):
                 result.append("")
                 continue
             words = raw.split(" ")
-            current = words[0]
-            for word in words[1:]:
-                candidate = current + " " + word
-                if fm.horizontalAdvance(candidate) <= max_w:
-                    current = candidate
+            current = ""
+            for word in words:
+                if not current:
+                    # First word on the line — break if too long
+                    parts = TextElement._break_word(word, fm, max_w)
+                    for p in parts[:-1]:
+                        result.append(p)
+                    current = parts[-1]
                 else:
-                    result.append(current)
-                    current = word
+                    candidate = current + " " + word
+                    if fm.horizontalAdvance(candidate) <= max_w:
+                        current = candidate
+                    else:
+                        result.append(current)
+                        parts = TextElement._break_word(word, fm, max_w)
+                        for p in parts[:-1]:
+                            result.append(p)
+                        current = parts[-1]
             result.append(current)
         return result if result else [""]
 
@@ -962,6 +991,7 @@ class TextElement(AnnotationElement):
 
         char_start/char_end are indices into self.text.
         Accounts for word-wrapping within paragraphs and \\n separators.
+        Long words exceeding max_w are broken at character boundaries.
         """
         result = []
         paragraphs = self.text.split("\n")
@@ -971,19 +1001,33 @@ class TextElement(AnnotationElement):
                 result.append(("", pos, pos))
             else:
                 words = para.split(" ")
-                current = words[0]
+                current = ""
                 current_start = pos
-                for word in words[1:]:
-                    candidate = current + " " + word
-                    if fm.horizontalAdvance(candidate) <= max_w:
-                        current = candidate
+                for wi, word in enumerate(words):
+                    if not current:
+                        # First word on the line — break if too long
+                        parts = TextElement._break_word(word, fm, max_w)
+                        for p in parts[:-1]:
+                            result.append((p, current_start, current_start + len(p)))
+                            current_start += len(p)
+                            pos = current_start
+                        current = parts[-1]
                     else:
-                        result.append((current, current_start, current_start + len(current)))
-                        pos += len(current) + 1  # +1 for consumed space
-                        current_start = pos
-                        current = word
+                        candidate = current + " " + word
+                        if fm.horizontalAdvance(candidate) <= max_w:
+                            current = candidate
+                        else:
+                            result.append((current, current_start, current_start + len(current)))
+                            pos = current_start + len(current) + 1  # +1 for space
+                            current_start = pos
+                            parts = TextElement._break_word(word, fm, max_w)
+                            for p in parts[:-1]:
+                                result.append((p, current_start, current_start + len(p)))
+                                current_start += len(p)
+                                pos = current_start
+                            current = parts[-1]
                 result.append((current, current_start, current_start + len(current)))
-                pos += len(current)
+                pos = current_start + len(current)
             if pi < len(paragraphs) - 1:
                 pos += 1  # '\n' character
         return result
@@ -1027,7 +1071,7 @@ class TextElement(AnnotationElement):
         return self.rect.normalized().contains(point)
 
     def paint(self, painter: QPainter):
-        if self.rotation and not self.editing:
+        if self.rotation:
             painter.save()
             _apply_rotation(painter, self.rect.center(), self.rotation)
             self._paint_text(painter)
@@ -1263,7 +1307,7 @@ class NumberElement(AnnotationElement):
         painter.setBrush(QColor(self.style.foreground_color))
         painter.drawEllipse(rect)
         painter.setPen(self._get_text_color())
-        font = QFont(self.style.font_family, int(self.size * 0.45), QFont.Weight.Bold)
+        font = QFont(self.style.font_family, max(1, int(self.size * 0.45)), QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(self.number))
 
@@ -1561,6 +1605,116 @@ class MagnifierElement(AnnotationElement):
         return elem
 
 
+class MeasureElement(AnnotationElement):
+    """Pixel distance measurement with architectural dimension lines."""
+
+    _TICK_LEN = 8   # perpendicular tick mark half-length
+    _FONT_SIZE = 11
+
+    def __init__(self, start: QPointF = QPointF(), end: QPointF = QPointF(),
+                 style: Optional[ElementStyle] = None):
+        super().__init__(ElementType.MEASURE, style)
+        self.start = start
+        self.end = end
+
+    @property
+    def _distance(self) -> float:
+        dx = self.end.x() - self.start.x()
+        dy = self.end.y() - self.start.y()
+        return math.sqrt(dx * dx + dy * dy)
+
+    def bounding_rect(self) -> QRectF:
+        pad = max(self.style.line_width, self._TICK_LEN) + self._FONT_SIZE + 4
+        return QRectF(self.start, self.end).normalized().adjusted(-pad, -pad, pad, pad)
+
+    def contains_point(self, point: QPointF) -> bool:
+        if self.rotation:
+            point = _rotate_point(point, self.bounding_rect().center(), -self.rotation)
+        tolerance = max(self.style.line_width, 8)
+        dx = self.end.x() - self.start.x()
+        dy = self.end.y() - self.start.y()
+        length_sq = dx * dx + dy * dy
+        if length_sq == 0:
+            return (point - self.start).manhattanLength() < tolerance
+        t = max(0, min(1, (
+            (point.x() - self.start.x()) * dx + (point.y() - self.start.y()) * dy
+        ) / length_sq))
+        proj = QPointF(self.start.x() + t * dx, self.start.y() + t * dy)
+        dist = math.sqrt((point.x() - proj.x()) ** 2 + (point.y() - proj.y()) ** 2)
+        return dist < tolerance
+
+    def _paint_measure(self, painter: QPainter):
+        pen = self._make_pen()
+        painter.setPen(pen)
+        # Main line
+        painter.drawLine(self.start, self.end)
+        # Perpendicular tick marks at endpoints
+        dx = self.end.x() - self.start.x()
+        dy = self.end.y() - self.start.y()
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 1:
+            return
+        # Unit perpendicular vector
+        px, py = -dy / length, dx / length
+        t = self._TICK_LEN
+        for pt in (self.start, self.end):
+            painter.drawLine(
+                QPointF(pt.x() + px * t, pt.y() + py * t),
+                QPointF(pt.x() - px * t, pt.y() - py * t),
+            )
+        # Distance label at midpoint
+        mid = QPointF((self.start.x() + self.end.x()) / 2,
+                      (self.start.y() + self.end.y()) / 2)
+        label = f"{length:.0f} px"
+        font = painter.font()
+        font.setPixelSize(self._FONT_SIZE)
+        font.setBold(True)
+        painter.setFont(font)
+        fm = painter.fontMetrics()
+        tw = fm.horizontalAdvance(label)
+        th = fm.height()
+        # Offset label perpendicular to the line
+        offset = t + 4
+        lx = mid.x() + px * offset - tw / 2
+        ly = mid.y() + py * offset + th / 4
+        # Background pill for readability
+        pill = QRectF(lx - 4, ly - th + 2, tw + 8, th + 2)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 180))
+        painter.drawRoundedRect(pill, 3, 3)
+        # Text
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText(QPointF(lx, ly), label)
+
+    def paint(self, painter: QPainter):
+        if self.rotation:
+            painter.save()
+            _apply_rotation(painter, self.bounding_rect().center(), self.rotation)
+            self._paint_shadow(painter, self._paint_measure)
+            painter.restore()
+        else:
+            self._paint_shadow(painter, self._paint_measure)
+
+    def move_by(self, dx: float, dy: float):
+        self.start = QPointF(self.start.x() + dx, self.start.y() + dy)
+        self.end = QPointF(self.end.x() + dx, self.end.y() + dy)
+
+    def to_dict(self) -> dict:
+        d = super().to_dict()
+        d["start"] = (self.start.x(), self.start.y())
+        d["end"] = (self.end.x(), self.end.y())
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "MeasureElement":
+        s = d.get("start", (0, 0))
+        e = d.get("end", (0, 0))
+        elem = cls(QPointF(s[0], s[1]), QPointF(e[0], e[1]),
+                   style=AnnotationElement._style_from_dict(d))
+        elem._apply_base_dict(d)
+        return elem
+
+
 # ---------------------------------------------------------------------------
 # Element factory — reconstruct any element from its to_dict() output
 # ---------------------------------------------------------------------------
@@ -1586,6 +1740,7 @@ def _register_element_classes():
         "IMAGE": ImageElement,
         "STAMP": StampElement,
         "MAGNIFIER": MagnifierElement,
+        "MEASURE": MeasureElement,
     }
 
 

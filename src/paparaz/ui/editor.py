@@ -15,11 +15,12 @@ from paparaz.ui.canvas import AnnotationCanvas
 from paparaz.ui.toolbar import MultiEdgeToolbar
 from paparaz.ui.side_panel import SidePanel
 from paparaz.ui.layers_panel import LayersPanel
+from paparaz.ui.status_bar import StatusBar, InfoWindow
 from paparaz.tools.base import ToolType
 from paparaz.tools.select import SelectTool
 from paparaz.tools.drawing import (
     PenTool, BrushTool, HighlightTool, LineTool, ArrowTool, CurvedArrowTool,
-    RectangleTool, EllipseTool,
+    RectangleTool, EllipseTool, MeasureTool,
 )
 from paparaz.tools.special import (
     TextTool, NumberingTool, EraserTool, MasqueradeTool, FillTool, StampTool, CropTool, SliceTool,
@@ -56,10 +57,16 @@ class EditorWindow(QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.Window    # Window (not Tool) so it survives focus loss
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(120, 80)
+
+        # Opaque window — avoids DWM compositor flicker during resize.
+        # Rounded corners are painted but the window itself is fully opaque.
+        self.setAutoFillBackground(True)
+        pal = self.palette()
+        pal.setColor(pal.ColorRole.Window, QColor(10, 10, 20))
+        self.setPalette(pal)
 
         # Main layout: top toolbar, then body (side panel + canvas + right toolbar), then bottom toolbar, then status
         layout = QVBoxLayout(self)
@@ -133,11 +140,18 @@ class EditorWindow(QWidget):
         )
         self._close_btn_overlay.clicked.connect(self._confirm_close)
 
-        # Status label at bottom (minimal)
-        self._status = QLabel("V:Select  P:Pen  B:Brush  H:Highlight  L:Line  A:Arrow  Q:CurvedArrow  R:Rect  E:Ellipse  T:Text  N:Num  S:Stamp  X:Erase  M:Blur  C:Crop")
-        self._status.setStyleSheet("color: rgba(255,255,255,180); font-size: 9px; padding: 2px;")
-        self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._status)
+        # Enhanced status bar
+        self._status_bar = StatusBar(self)
+        layout.addWidget(self._status_bar)
+
+        # Shortcut hints (below status bar, tiny)
+        self._shortcut_hint = QLabel("V:Select  P:Pen  B:Brush  H:Highlight  L:Line  A:Arrow  Q:CurvedArrow  R:Rect  E:Ellipse  T:Text  N:Num  S:Stamp  X:Erase  M:Blur  C:Crop  D:Measure")
+        self._shortcut_hint.setStyleSheet("color: rgba(255,255,255,160); font-size: 11px; padding: 2px;")
+        self._shortcut_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._shortcut_hint)
+
+        # Detachable info window
+        self._info_window: InfoWindow | None = None
 
         # --- Tools ---
         self._text_tool = TextTool(self._canvas)
@@ -166,6 +180,7 @@ class EditorWindow(QWidget):
             ToolType.SLICE:      self._slice_tool,
             ToolType.EYEDROPPER: EyedropperTool(self._canvas),
             ToolType.MAGNIFIER: MagnifierTool(self._canvas),
+            ToolType.MEASURE:  MeasureTool(self._canvas),
         }
 
         # Wire specialized tool defaults from settings
@@ -194,11 +209,11 @@ class EditorWindow(QWidget):
         self._canvas.elements_changed.connect(self._on_elements_changed)
 
         # --- Side panel signals ---
-        self._side_panel.fg_color_changed.connect(self._canvas.set_foreground_color)
-        self._side_panel.bg_color_changed.connect(self._canvas.set_background_color)
+        self._side_panel.fg_color_changed.connect(self._on_fg_color_changed)
+        self._side_panel.bg_color_changed.connect(self._on_bg_color_changed)
         self._side_panel.line_width_changed.connect(self._canvas.set_line_width)
-        self._side_panel.font_family_changed.connect(self._canvas.set_font_family)
-        self._side_panel.font_size_changed.connect(self._canvas.set_font_size)
+        self._side_panel.font_family_changed.connect(self._on_font_family_changed)
+        self._side_panel.font_size_changed.connect(self._on_font_size_changed)
         self._side_panel.shadow_toggled.connect(self._canvas.set_shadow_enabled)
         self._side_panel.shadow_color_changed.connect(self._canvas.set_shadow_color)
         self._side_panel.shadow_offset_x_changed.connect(self._canvas.set_shadow_offset_x)
@@ -271,6 +286,18 @@ class EditorWindow(QWidget):
         self._canvas.fg_color_picked.connect(self._on_eyedropper_fg)
         self._canvas.bg_color_picked.connect(self._on_eyedropper_bg)
 
+        # Status bar signals
+        self._canvas.mouse_moved.connect(self._on_mouse_moved)
+        self._canvas.element_selected.connect(self._on_selection_for_status)
+        self._canvas.elements_changed.connect(self._on_elements_for_status)
+        self._canvas.zoom_changed.connect(self._status_bar.update_zoom)
+        self._status_bar.detach_requested.connect(self._toggle_info_window)
+        self._status_bar.zoom_requested.connect(self._on_zoom_input)
+        # Initial canvas size
+        bg = self._canvas._background
+        if not bg.isNull():
+            self._status_bar.update_canvas_size(bg.width(), bg.height())
+
         self._setup_shortcuts()
         self._on_tool_selected(ToolType.SELECT)
         NumberElement.reset_counter()
@@ -298,24 +325,18 @@ class EditorWindow(QWidget):
     _chrome_accent = QColor(116, 0, 150)  # border accent from theme
 
     def paintEvent(self, event):
-        """Draw window chrome: outer shadow ring + opaque background + themed accent border."""
+        """Draw window chrome: opaque background fill + themed accent border."""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         r = self.rect()
-        # Outer dark shadow ring — visible against any desktop background
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QColor(0, 0, 0, 100))
-        p.drawRoundedRect(r.adjusted(0, 0, -1, -1), 10, 10)
-        p.setPen(QColor(0, 0, 0, 50))
-        p.drawRoundedRect(r.adjusted(1, 1, -2, -2), 10, 10)
-        # Main background fill — fully opaque so toolbar/statusbar aren't see-through
+        # Full opaque background fill (auto-fill handles base, this covers edges)
         p.setBrush(self._chrome_bg)
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(r.adjusted(2, 2, -2, -2), 8, 8)
-        # Accent border from theme (2 px, fully opaque)
+        p.drawRect(r)
+        # Accent border from theme (2 px)
         p.setPen(QPen(self._chrome_accent, 2))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawRoundedRect(r.adjusted(2, 2, -2, -2), 8, 8)
+        p.drawRect(r.adjusted(1, 1, -1, -1))
         p.end()
 
     # --- Border resize cursor + drag: event filter installed on every child widget ---
@@ -542,7 +563,7 @@ class EditorWindow(QWidget):
             c._shadow.blur_x = float(props["shadow_blur"])
             c._shadow.blur_y = float(props["shadow_blur"])
         if "font_family" in props:      c._font_family = props["font_family"]
-        if "font_size" in props:        c._font_size = int(props["font_size"])
+        if "font_size" in props:        c._font_size = max(1, int(props["font_size"]))
         # Sync panel UI without firing signals
         self._side_panel.apply_properties_silent(props)
 
@@ -620,6 +641,22 @@ class EditorWindow(QWidget):
             desired_h = max(300, min(desired_h, sg.height() - 40))
         self.resize(desired_w, desired_h)
 
+    def _on_zoom_input(self, zoom: float):
+        """Handle manual zoom input from the status bar combo."""
+        if zoom < 0:
+            # "Fit" — compute zoom to fit canvas in current window
+            bg = self._canvas._background
+            if bg.isNull():
+                return
+            chrome_w = self.width() - self._canvas.width()
+            chrome_h = self.height() - self._canvas.height()
+            avail_w = max(100, self.width() - chrome_w)
+            avail_h = max(100, self.height() - chrome_h)
+            fit = min(avail_w / bg.width(), avail_h / bg.height())
+            self._canvas.set_zoom(fit)
+        else:
+            self._canvas.set_zoom(zoom)
+
     def _apply_default_zoom(self):
         """Set zoom level based on user preference."""
         if not self._settings_manager:
@@ -687,6 +724,10 @@ class EditorWindow(QWidget):
         # Update chrome colors from theme
         self._chrome_bg = QColor(theme.get("bg1", "#1e1e2e"))
         self._chrome_accent = QColor(theme.get("accent", "#740096"))
+        # Keep window palette in sync so auto-fill matches
+        pal = self.palette()
+        pal.setColor(pal.ColorRole.Window, self._chrome_bg)
+        self.setPalette(pal)
         # Update selection handle + border accent color to match theme
         set_selection_accent(theme.get("accent", "#740096"))
         if hasattr(self, '_canvas'):
@@ -837,29 +878,55 @@ class EditorWindow(QWidget):
 
     def _on_text_bold(self, v):
         self._text_tool.set_bold(v)
+        at = self._text_tool._active_text
+        if at is not None:
+            at.bold = v
+            at.auto_size()
+            self._canvas.set_preview(at)
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.bold = v; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.bold = v
+            e.auto_size()
+            self._canvas.update()
 
     def _on_text_italic(self, v):
         self._text_tool.set_italic(v)
+        at = self._text_tool._active_text
+        if at is not None:
+            at.italic = v
+            at.auto_size()
+            self._canvas.set_preview(at)
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.italic = v; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.italic = v
+            e.auto_size()
+            self._canvas.update()
 
     def _on_text_underline(self, v):
         self._text_tool.set_underline(v)
+        at = self._text_tool._active_text
+        if at is not None:
+            at.underline = v
+            self._canvas.set_preview(at)
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.underline = v; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.underline = v
+            self._canvas.update()
 
     def _on_strikethrough(self, v):
         self._text_tool.strikethrough = v
-        if self._text_tool._active_text:
-            self._text_tool._active_text.strikethrough = v
-            self._canvas.set_preview(self._text_tool._active_text)
+        at = self._text_tool._active_text
+        if at is not None:
+            at.strikethrough = v
+            self._canvas.set_preview(at)
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.strikethrough = v; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.strikethrough = v
+            self._canvas.update()
 
     def _on_text_alignment(self, align):
         self._text_tool.set_alignment(align)
+        # set_alignment already handles _active_text
         e = self._canvas.selected_element
         if isinstance(e, TextElement):
             m = {"left": Qt.AlignmentFlag.AlignLeft, "center": Qt.AlignmentFlag.AlignCenter, "right": Qt.AlignmentFlag.AlignRight}
@@ -868,6 +935,7 @@ class EditorWindow(QWidget):
 
     def _on_text_direction(self, d):
         self._text_tool.set_direction(d)
+        # set_direction already handles _active_text
         e = self._canvas.selected_element
         if isinstance(e, TextElement):
             e.direction = Qt.LayoutDirection.RightToLeft if d == "rtl" else Qt.LayoutDirection.LeftToRight
@@ -875,28 +943,76 @@ class EditorWindow(QWidget):
 
     def _on_text_bg_enabled(self, v):
         self._text_tool.set_bg_enabled(v)
+        # set_bg_enabled already handles _active_text
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.bg_enabled = v; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.bg_enabled = v
+            e.auto_size()
+            self._canvas.update()
 
     def _on_text_bg_color(self, c):
         self._text_tool.set_bg_color(c)
+        # set_bg_color already handles _active_text
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.bg_color = c; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.bg_color = c
+            self._canvas.update()
 
     def _on_text_stroke_enabled(self, v):
         self._text_tool.set_stroke_enabled(v)
+        # set_stroke_enabled already handles _active_text
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.stroke_enabled = v; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.stroke_enabled = v
+            self._canvas.update()
 
     def _on_text_stroke_color(self, c):
         self._text_tool.set_stroke_color(c)
+        # set_stroke_color already handles _active_text
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.stroke_color = c; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.stroke_color = c
+            self._canvas.update()
 
     def _on_text_stroke_width(self, w):
         self._text_tool.set_stroke_width(w)
+        # set_stroke_width already handles _active_text
         e = self._canvas.selected_element
-        if isinstance(e, TextElement): e.stroke_width = w; self._canvas.update()
+        if isinstance(e, TextElement):
+            e.stroke_width = w
+            self._canvas.update()
+
+    def _on_fg_color_changed(self, color: str):
+        self._canvas.set_foreground_color(color)
+        at = self._text_tool._active_text
+        if at is not None:
+            at.style.foreground_color = color
+            self._canvas.set_preview(at)
+
+    def _on_bg_color_changed(self, color: str):
+        self._canvas.set_background_color(color)
+        at = self._text_tool._active_text
+        if at is not None:
+            at.style.background_color = color
+            self._canvas.set_preview(at)
+
+    def _on_font_family_changed(self, family: str):
+        self._canvas.set_font_family(family)
+        # Also apply to actively editing text element
+        at = self._text_tool._active_text
+        if at is not None:
+            at.style.font_family = family
+            at.auto_size()
+            self._canvas.set_preview(at)
+
+    def _on_font_size_changed(self, size: int):
+        self._canvas.set_font_size(size)
+        # Also apply to actively editing text element
+        at = self._text_tool._active_text
+        if at is not None:
+            at.style.font_size = max(1, size)
+            at.auto_size()
+            self._canvas.set_preview(at)
 
     # --- Canvas resize dialog ---
 
@@ -941,6 +1057,52 @@ class EditorWindow(QWidget):
     def _on_elements_changed(self):
         if hasattr(self, '_layers_panel') and self._layers_panel.isVisible():
             self._layers_panel.refresh()
+
+    # ── Status bar handlers ─────────────────────────────────────────────────
+
+    def _on_mouse_moved(self, x: float, y: float):
+        self._status_bar.update_mouse_pos(x, y)
+        if self._info_window:
+            self._info_window.update_mouse_pos(x, y)
+
+    def _on_selection_for_status(self, element):
+        if element and hasattr(element, 'bounding_rect'):
+            r = element.bounding_rect()
+            self._status_bar.update_selection(r.width(), r.height())
+            if self._info_window:
+                self._info_window.update_selection(r.width(), r.height())
+        else:
+            self._status_bar.clear_selection()
+            if self._info_window:
+                self._info_window.clear_selection()
+
+    def _on_elements_for_status(self):
+        count = len(self._canvas.elements)
+        self._status_bar.update_element_count(count)
+        if self._info_window:
+            self._info_window.update_element_count(count)
+
+    def _toggle_info_window(self):
+        if self._info_window and self._info_window.isVisible():
+            self._info_window.close()
+            self._info_window = None
+            return
+        self._info_window = InfoWindow()
+        self._info_window.closed.connect(self._on_info_window_closed)
+        # Sync current state
+        bg = self._canvas._background
+        if not bg.isNull():
+            self._info_window.update_canvas_size(bg.width(), bg.height())
+        self._info_window.update_zoom(self._canvas.zoom)
+        self._info_window.update_element_count(len(self._canvas.elements))
+        sel = self._canvas.selected_element
+        if sel and hasattr(sel, 'bounding_rect'):
+            r = sel.bounding_rect()
+            self._info_window.update_selection(r.width(), r.height())
+        self._info_window.show()
+
+    def _on_info_window_closed(self):
+        self._info_window = None
 
     def _on_layer_element_selected(self, elem):
         if elem:
@@ -988,6 +1150,7 @@ class EditorWindow(QWidget):
             "C": ToolType.CROP,         "F": ToolType.FILL,
             "Z": ToolType.SLICE,        "I": ToolType.EYEDROPPER,
             "G": ToolType.MAGNIFIER,
+            "D": ToolType.MEASURE,
         }
         for key, tt in tool_keys.items():
             sc(key, lambda _tt=tt: self._on_tool_selected(_tt))
@@ -1019,13 +1182,26 @@ class EditorWindow(QWidget):
             return
         msg = QMessageBox(self)
         msg.setWindowTitle("Close Editor")
-        msg.setText("Close the editor?")
-        msg.setInformativeText("Unsaved annotations will be lost.")
-        msg.setStyleSheet("QMessageBox{background:#1a1a2e;color:#ddd;} QLabel{color:#ddd;}")
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setText("Are you sure you want to close?")
+        msg.setInformativeText(
+            "You have unsaved annotations. Any changes will be lost."
+        )
+        msg.setStyleSheet(
+            "QMessageBox { background: #1a1a2e; color: #ddd; }"
+            "QLabel { color: #ddd; font-size: 12px; }"
+            "QPushButton {"
+            "  background: #2a2a4e; color: #ddd; border: 1px solid #555;"
+            "  border-radius: 4px; padding: 6px 16px; font-size: 11px;"
+            "}"
+            "QPushButton:hover { background: #3a3a5e; }"
+            "QPushButton:pressed { background: #1a1a3e; }"
+            "QPushButton:default { border: 1px solid #740096; }"
+        )
 
-        copy_btn   = msg.addButton("Copy to clipboard & Exit", QMessageBox.ButtonRole.AcceptRole)
-        exit_btn   = msg.addButton("Exit",            QMessageBox.ButtonRole.DestructiveRole)
-        cancel_btn = msg.addButton("Cancel",          QMessageBox.ButtonRole.RejectRole)
+        copy_btn   = msg.addButton("Copy to Clipboard && Exit", QMessageBox.ButtonRole.AcceptRole)
+        exit_btn   = msg.addButton("Discard && Exit",            QMessageBox.ButtonRole.DestructiveRole)
+        cancel_btn = msg.addButton("Cancel",                     QMessageBox.ButtonRole.RejectRole)
         msg.setDefaultButton(cancel_btn)
         msg.exec()
 

@@ -683,7 +683,9 @@ class AnnotationCanvas(QWidget):
             # delegate resize/rotate to the hidden SelectTool.
             if (self._is_handle_tool() and self.selected_element
                     and event.button() == Qt.MouseButton.LeftButton):
-                handle = self.selected_element.handle_at(pos)
+                # Use tight tolerance so drawing near a selected element
+                # starts a new element instead of resizing the old one.
+                handle = self.selected_element.handle_at(pos, tolerance=8)
                 if handle is not None:
                     self._handle_active = True
                     self._handle_select.on_press(pos, event)
@@ -715,7 +717,7 @@ class AnnotationCanvas(QWidget):
             else:
                 # Show handle cursors even when a non-select tool is active
                 if self._is_handle_tool() and self.selected_element:
-                    handle = self.selected_element.handle_at(pos)
+                    handle = self.selected_element.handle_at(pos, tolerance=8)
                     if handle is not None:
                         self.setCursor(_HANDLE_CURSORS.get(
                             handle, Qt.CursorShape.ArrowCursor))

@@ -204,19 +204,23 @@ class SelectTool(BaseTool):
             self._rubber_rect = QRectF(self._rubber_start, pos).normalized()
             self.canvas.update()
         elif self._dragging and self._multi_selected:
-            dx = pos.x() - self._drag_start.x()
-            dy = pos.y() - self._drag_start.y()
-            dx, dy = self._apply_snap_move(self._multi_selected, dx, dy)
+            raw_dx = pos.x() - self._drag_start.x()
+            raw_dy = pos.y() - self._drag_start.y()
+            dx, dy = self._apply_snap_move(self._multi_selected, raw_dx, raw_dy)
             for elem in self._multi_selected:
                 elem.move_by(dx, dy)
-            self._drag_start = pos
+            # Advance drag_start by the actual (snapped) delta so the next
+            # frame's calculation stays in sync with the element position.
+            self._drag_start = QPointF(
+                self._drag_start.x() + dx, self._drag_start.y() + dy)
             self.canvas.update()
         elif self._dragging and self.canvas.selected_element:
-            dx = pos.x() - self._drag_start.x()
-            dy = pos.y() - self._drag_start.y()
-            dx, dy = self._apply_snap_move(self.canvas.selected_element, dx, dy)
+            raw_dx = pos.x() - self._drag_start.x()
+            raw_dy = pos.y() - self._drag_start.y()
+            dx, dy = self._apply_snap_move(self.canvas.selected_element, raw_dx, raw_dy)
             self.canvas.selected_element.move_by(dx, dy)
-            self._drag_start = pos
+            self._drag_start = QPointF(
+                self._drag_start.x() + dx, self._drag_start.y() + dy)
             self.canvas.update()
         elif self._resizing and self.canvas.selected_element:
             self._resize_element(pos)

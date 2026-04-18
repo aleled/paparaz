@@ -1,8 +1,38 @@
 # PapaRaZ QA Findings Report
 
 **Last updated**: 2026-04-18
-**Current version**: 0.9.9
-**Test suite**: 653 tests across 4 files, all passing (~13s)
+**Current version**: 0.9.9 (post-release development)
+**Test suite**: 776 tests across 4 files, all passing (~12s)
+
+---
+
+## Post-0.9.9 Findings (2026-04-18 — parallel agent session)
+
+### BUG-6: RectangleTool / EllipseTool store un-normalized rect — FIXED
+- **Severity**: Medium
+- **Location**: `src/paparaz/tools/drawing.py` — `RectangleTool.on_release`, `EllipseTool.on_release`
+- **Issue**: `r = self._current.rect.normalized()` was used for the size check but the *original* un-normalized rect (negative w/h when dragging left/up) was stored in the committed element. `move_by()` and `to_dict()` operated on corrupt geometry.
+- **Fix**: Added `self._current.rect = r` before `canvas.add_element(self._current)` in both tools.
+- **Tests**: `test_rect_drag_left_stored_rect_normalized`, `test_ellipse_drag_left_stored_rect_normalized`
+
+### BUG-7: CurvedArrowTool commits zero-length curves — FIXED
+- **Severity**: Low
+- **Location**: `src/paparaz/tools/drawing.py` — `CurvedArrowTool.on_press` (PHASE_CTRL) and `on_key_press` (Enter)
+- **Issue**: No minimum-length guard — clicking the same point twice and pressing Enter committed a degenerate `CurvedArrowElement` with `start == end` (no visual presence).
+- **Fix**: Added `_MIN_LENGTH_SQ = 4` class constant + length check before `canvas.add_element()` in both commit paths.
+- **Tests**: `test_curved_arrow_zero_length_not_committed`, `test_curved_arrow_very_short_rejected`
+
+### FINDING-A: MeasureTool / MeasureElement had zero test coverage — ADDRESSED
+- **Severity**: Medium
+- **Added**: 77 new tests (`TestMeasureToolWorkflow` + `TestMeasureElement`) covering all code paths.
+
+### FINDING-B: elements.py had duplicated rotation/shadow boilerplate — ADDRESSED
+- **Severity**: Low (code quality)
+- **Refactored**: Extracted `_rotated_paint` and `_paint_offset_shadow` helpers; removed boilerplate from 11 paint methods. 1833 → 1790 lines.
+
+### FEATURE: .papraz project file format — IMPLEMENTED
+- `src/paparaz/core/project.py` — `save_project` / `load_project`
+- Wired as `Ctrl+Shift+P` (save) / `Ctrl+Shift+O` (open) in `EditorWindow`
 
 ---
 

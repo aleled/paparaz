@@ -197,7 +197,7 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Filename live preview (accent colored, format-aware extension)
 
 ### Far future (Tier 10)
-- [ ] Project file format (.papraz) — save/load edits with full object state (element serialization complete in v0.9.7, needs file format wrapper)
+- [x] Project file format (.papraz) — save/load edits with full object state (`Ctrl+Shift+P` / `Ctrl+Shift+O`, zlib-compressed JSON, background + elements, 11 roundtrip tests)
 
 ---
 
@@ -213,6 +213,12 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] Editor close confirmation dialog (Save & Exit / Discard / Cancel)
 - [x] Toolbar reserved space for close button + overflow indicator
 
-## Current Status: v0.9.9 — HiDPI sharpness, number styles, text shortcuts, palette redesign
+- [x] .papraz project file format — save/load full annotated sessions (Ctrl+Shift+P/O)
+- [x] Drawing tool bug fixes — normalized rect for Rect/EllipseTool, zero-length guard for CurvedArrow
+- [x] elements.py refactoring — `_rotated_paint` / `_paint_offset_shadow` helpers extracted (-43 lines)
+- [x] MeasureTool + MeasureElement test coverage — 77 new tests (was 0)
+- [x] Test suite grown to 776 tests (+102 from 674)
+
+## Current Status: v0.9.9 (post-release) — project file format, drawing bugs, refactor, +102 tests
 **Version**: 0.9.9
 **Last updated**: 2026-04-18

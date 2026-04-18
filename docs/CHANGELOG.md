@@ -1,5 +1,30 @@
 # PapaRaZ - Changelog
 
+## [Unreleased] - post-0.9.9
+
+### .papraz Project File Format
+- **Save / Load annotated sessions** — `Ctrl+Shift+P` saves a `.papraz` file, `Ctrl+Shift+O` opens one
+- Format: zlib-compressed JSON (base64 outer envelope) — background image as base64 PNG + all elements via `to_dict()`
+- Version field for forward compatibility; raises `ValueError` on corrupt or future-version files
+- New module: `src/paparaz/core/project.py` (`save_project` / `load_project`)
+- 11 roundtrip tests in `TestProjectFileSaveLoad`
+
+### Drawing Tool Bug Fixes
+- **RectangleTool / EllipseTool**: committed element now always stores a *normalized* QRectF (positive width/height) — dragging left or upward previously stored a rect with negative dimensions, causing `move_by()` and `to_dict()` to operate on corrupt geometry
+- **CurvedArrowTool**: added minimum-length guard (`_MIN_LENGTH_SQ = 4`, matching LineTool) — zero-length curves (clicking the same point twice) are no longer committed to the canvas
+
+### elements.py Refactoring
+- Extracted `AnnotationElement._rotated_paint(painter, paint_fn)` helper — eliminates `save/translate/rotate/translate/restore` boilerplate duplicated across 11 element `paint()` methods
+- Extracted `AnnotationElement._paint_offset_shadow(painter, draw_fn)` helper — deduplicates drop-shadow pattern in `NumberElement`, `ImageElement`, `StampElement`
+- `elements.py` reduced from 1833 → 1790 lines (−43)
+
+### Test Coverage
+- **MeasureTool + MeasureElement**: added 77 new tests (was 0) — `TestMeasureToolWorkflow` (34 functional tests) and `TestMeasureElement` (43 unit tests) covering drag creation, point storage, roundtrip serialization, undo/redo, zero-length rejection, distance calculation, paint, bounding_rect, contains_point, move_by
+- **Drawing tool edge cases**: added 26 tests in `TestDrawingToolEdgeCases` — missing-press guards, negative-dimension rects, curved arrow minimum length
+- Total test suite: 674 → 776 (+102 tests)
+
+---
+
 ## [0.9.9] - 2026-04-18
 
 ### HiDPI / Retina-Sharp Captures (major fix)

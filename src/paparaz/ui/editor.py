@@ -1195,6 +1195,8 @@ class EditorWindow(QWidget):
         sc("Ctrl+Shift+Z", self._canvas.history.redo)
         sc("Ctrl+S",       self._save_as)
         sc("Ctrl+Shift+S", lambda: self._save_as(force_dialog=False))
+        sc("Ctrl+Shift+O", self._open_project)
+        sc("Ctrl+Shift+P", self._save_project_as)
         sc("Ctrl+C",       self._copy_to_clipboard)
         sc("Ctrl+V",       self._paste)
         sc("Ctrl+]",       self._canvas.bring_to_front)
@@ -1396,6 +1398,45 @@ class EditorWindow(QWidget):
         background = self._canvas._background.copy()
         elements = copy.copy(self._canvas.elements)
         self.pin_requested.emit(rendered, background, elements)
+
+    # --- Project file (.papraz) ---
+
+    def _save_project_as(self):
+        """Save current session as a .papraz project file (Ctrl+Shift+P)."""
+        from paparaz.core.project import save_project
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Project",
+            str(Path.home() / "Pictures" / "PapaRaZ" / "untitled.papraz"),
+            "PapaRaZ Project (*.papraz)",
+        )
+        if not path:
+            return
+        try:
+            save_project(path, self._canvas)
+            self.setWindowTitle(f"PapaRaZ — {Path(path).name}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Save Project Failed", str(exc))
+
+    def _open_project(self):
+        """Open a .papraz project file and restore canvas state (Ctrl+Shift+O)."""
+        from paparaz.core.project import load_project
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open Project",
+            str(Path.home() / "Pictures" / "PapaRaZ"),
+            "PapaRaZ Project (*.papraz)",
+        )
+        if not path:
+            return
+        try:
+            meta = load_project(path, self._canvas)
+            self._canvas.set_zoom(1.0)
+            # Sync status bar with restored canvas size
+            bg = self._canvas._background
+            self._status_bar.update_canvas_size(bg.width(), bg.height())
+            self.setWindowTitle(f"PapaRaZ — {Path(path).name}")
+            self._was_saved = False
+        except Exception as exc:
+            QMessageBox.critical(self, "Open Project Failed", str(exc))
 
     def closeEvent(self, event):
         if getattr(self, "_border_cursor_on", False):

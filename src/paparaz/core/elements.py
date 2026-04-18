@@ -280,6 +280,38 @@ class AnnotationElement:
         pen.setStyle(DASH_PATTERNS.get(self.style.dash_pattern, Qt.PenStyle.SolidLine))
         return pen
 
+    def _rotated_paint(self, painter: QPainter, paint_fn, center: Optional[QPointF] = None):
+        """Run *paint_fn(painter)* under the element's rotation transform.
+
+        If the element has no rotation, *paint_fn* is called directly. Otherwise
+        the painter is saved, rotated around *center* (defaults to the element's
+        bounding-rect centre), *paint_fn* is invoked, and the painter is restored.
+        """
+        if not self.rotation:
+            paint_fn(painter)
+            return
+        if center is None:
+            center = self.bounding_rect().center()
+        painter.save()
+        _apply_rotation(painter, center, self.rotation)
+        paint_fn(painter)
+        painter.restore()
+
+    def _paint_offset_shadow(self, painter: QPainter, draw_fn, opacity: float = 0.3):
+        """Draw *draw_fn(painter)* once, translated by the shadow offset with reduced
+        opacity. Used by elements that want a simple drop-shadow without the expensive
+        pixmap blur pipeline (Number, Image, Stamp, Magnifier).
+
+        Does nothing when shadows are disabled.
+        """
+        if not self.style.shadow.enabled:
+            return
+        painter.save()
+        painter.translate(self.style.shadow.offset_x, self.style.shadow.offset_y)
+        painter.setOpacity(painter.opacity() * opacity)
+        draw_fn(painter)
+        painter.restore()
+
     def _paint_shadow(self, painter: QPainter, paint_fn):
         """Paint a blurred shadow copy of the element, then the element itself."""
         if not self.style.shadow.enabled:
@@ -431,13 +463,7 @@ class PenElement(AnnotationElement):
     def paint(self, painter: QPainter):
         if len(self.points) < 2:
             return
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.bounding_rect().center(), self.rotation)
-            self._paint_shadow(painter, self._paint_stroke)
-            painter.restore()
-        else:
-            self._paint_shadow(painter, self._paint_stroke)
+        self._rotated_paint(painter, lambda p: self._paint_shadow(p, self._paint_stroke))
 
     def move_by(self, dx: float, dy: float):
         self.points = [QPointF(p.x() + dx, p.y() + dy) for p in self.points]
@@ -560,13 +586,7 @@ class LineElement(AnnotationElement):
         painter.drawLine(self.start, self.end)
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.bounding_rect().center(), self.rotation)
-            self._paint_shadow(painter, self._paint_line)
-            painter.restore()
-        else:
-            self._paint_shadow(painter, self._paint_line)
+        self._rotated_paint(painter, lambda p: self._paint_shadow(p, self._paint_line))
 
     def move_by(self, dx: float, dy: float):
         self.start = QPointF(self.start.x() + dx, self.start.y() + dy)
@@ -724,13 +744,7 @@ class CurvedArrowElement(AnnotationElement):
         painter.drawPolygon(QPolygonF([self.end, p1, p2]))
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.bounding_rect().center(), self.rotation)
-            self._paint_shadow(painter, self._paint_curve)
-            painter.restore()
-        else:
-            self._paint_shadow(painter, self._paint_curve)
+        self._rotated_paint(painter, lambda p: self._paint_shadow(p, self._paint_curve))
 
     def move_by(self, dx: float, dy: float):
         self.start   = QPointF(self.start.x()   + dx, self.start.y()   + dy)
@@ -793,13 +807,7 @@ class RectElement(AnnotationElement):
         painter.drawRect(self.rect.normalized())
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.rect.normalized().center(), self.rotation)
-            self._paint_shadow(painter, self._paint_rect)
-            painter.restore()
-        else:
-            self._paint_shadow(painter, self._paint_rect)
+        self._rotated_paint(painter, lambda p: self._paint_shadow(p, self._paint_rect))
 
     def move_by(self, dx: float, dy: float):
         self.rect = QRectF(
@@ -861,13 +869,7 @@ class EllipseElement(AnnotationElement):
         painter.drawEllipse(self.rect.normalized())
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.rect.normalized().center(), self.rotation)
-            self._paint_shadow(painter, self._paint_ellipse)
-            painter.restore()
-        else:
-            self._paint_shadow(painter, self._paint_ellipse)
+        self._rotated_paint(painter, lambda p: self._paint_shadow(p, self._paint_ellipse))
 
     def move_by(self, dx: float, dy: float):
         self.rect = QRectF(
@@ -1071,13 +1073,7 @@ class TextElement(AnnotationElement):
         return self.rect.normalized().contains(point)
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.rect.center(), self.rotation)
-            self._paint_text(painter)
-            painter.restore()
-            return
-        self._paint_text(painter)
+        self._rotated_paint(painter, self._paint_text)
 
     def _paint_text(self, painter: QPainter):
         font = self._make_font()
@@ -1325,6 +1321,16 @@ class NumberElement(AnnotationElement):
         fg = QColor(self.style.foreground_color)
         return QColor("#FFFFFF") if fg.lightness() < 128 else QColor("#000000")
 
+    def _make_font(self, label_len: int) -> QFont:
+        """Build the label font. Shrinks for longer labels (roman/multi-char alpha)."""
+        if label_len <= 2:
+            pt = int(self.size * 0.45)
+        elif label_len == 3:
+            pt = int(self.size * 0.33)
+        else:
+            pt = int(self.size * 0.25)
+        return QFont(self.style.font_family, max(1, pt), QFont.Weight.Bold)
+
     def bounding_rect(self) -> QRectF:
         return QRectF(
             self.position.x() - self.size / 2, self.position.y() - self.size / 2,
@@ -1337,13 +1343,7 @@ class NumberElement(AnnotationElement):
         return self.bounding_rect().contains(point)
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.position, self.rotation)
-            self._paint_number(painter)
-            painter.restore()
-        else:
-            self._paint_number(painter)
+        self._rotated_paint(painter, self._paint_number, center=self.position)
 
     def _paint_number(self, painter: QPainter):
         rect = self.bounding_rect()
@@ -1351,36 +1351,25 @@ class NumberElement(AnnotationElement):
         label = _format_number_label(self.number, num_style)
         use_square = (num_style == "boxed")
 
-        if self.style.shadow.enabled:
-            painter.save()
-            painter.translate(self.style.shadow.offset_x, self.style.shadow.offset_y)
-            painter.setOpacity(painter.opacity() * 0.4)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(self.style.shadow.color))
+        def _draw_marker(p: QPainter):
             if use_square:
-                painter.drawRoundedRect(rect, 3, 3)
+                p.drawRoundedRect(rect, 3, 3)
             else:
-                painter.drawEllipse(rect)
-            painter.restore()
+                p.drawEllipse(rect)
+
+        def _draw_shadow(p: QPainter):
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(self.style.shadow.color))
+            _draw_marker(p)
+
+        self._paint_offset_shadow(painter, _draw_shadow, opacity=0.4)
 
         painter.setPen(QPen(QColor(self.style.foreground_color), 2))
         painter.setBrush(QColor(self.style.foreground_color))
-        if use_square:
-            painter.drawRoundedRect(rect, 3, 3)
-        else:
-            painter.drawEllipse(rect)
+        _draw_marker(painter)
 
         painter.setPen(self._get_text_color())
-        # Scale font down for longer labels (roman numerals, multi-char alpha)
-        n_chars = len(label)
-        if n_chars <= 2:
-            pt = int(self.size * 0.45)
-        elif n_chars == 3:
-            pt = int(self.size * 0.33)
-        else:
-            pt = int(self.size * 0.25)
-        font = QFont(self.style.font_family, max(1, pt), QFont.Weight.Bold)
-        painter.setFont(font)
+        painter.setFont(self._make_font(len(label)))
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
 
     def move_by(self, dx: float, dy: float):
@@ -1471,22 +1460,14 @@ class ImageElement(AnnotationElement):
     def paint(self, painter: QPainter):
         if self.pixmap.isNull():
             return
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.rect.normalized().center(), self.rotation)
-            self._paint_image(painter)
-            painter.restore()
-        else:
-            self._paint_image(painter)
+        self._rotated_paint(painter, self._paint_image)
 
     def _paint_image(self, painter: QPainter):
         r = self.rect.normalized()
-        if self.style.shadow.enabled:
-            painter.save()
-            painter.translate(self.style.shadow.offset_x, self.style.shadow.offset_y)
-            painter.setOpacity(painter.opacity() * 0.3)
-            painter.fillRect(r.toRect(), QColor(0, 0, 0))
-            painter.restore()
+        self._paint_offset_shadow(
+            painter,
+            lambda p: p.fillRect(r.toRect(), QColor(0, 0, 0)),
+        )
         painter.drawPixmap(r.toRect(), self.pixmap)
 
     def move_by(self, dx: float, dy: float):
@@ -1531,28 +1512,16 @@ class StampElement(AnnotationElement):
         return self.rect.normalized().contains(point)
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.rect.normalized().center(), self.rotation)
-            self._paint_stamp(painter)
-            painter.restore()
-        else:
-            self._paint_stamp(painter)
+        self._rotated_paint(painter, self._paint_stamp)
 
     def _paint_stamp(self, painter: QPainter):
         from paparaz.ui.stamps import get_stamp_renderer
         r = self.rect.normalized()
-        if self.style.shadow.enabled:
-            painter.save()
-            painter.translate(self.style.shadow.offset_x, self.style.shadow.offset_y)
-            painter.setOpacity(painter.opacity() * 0.3)
-            renderer = get_stamp_renderer(self.stamp_id)
-            if renderer:
-                renderer.render(painter, r)
-            painter.restore()
         renderer = get_stamp_renderer(self.stamp_id)
-        if renderer:
-            renderer.render(painter, r)
+        if renderer is None:
+            return
+        self._paint_offset_shadow(painter, lambda p: renderer.render(p, r))
+        renderer.render(painter, r)
 
     def move_by(self, dx: float, dy: float):
         self.rect = QRectF(
@@ -1598,13 +1567,7 @@ class MagnifierElement(AnnotationElement):
         return self.display_rect.normalized().contains(point)
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.display_rect.normalized().center(), self.rotation)
-            self._paint_magnifier(painter)
-            painter.restore()
-        else:
-            self._paint_magnifier(painter)
+        self._rotated_paint(painter, self._paint_magnifier)
 
     def _paint_magnifier(self, painter: QPainter):
         r = self.display_rect.normalized()
@@ -1761,13 +1724,7 @@ class MeasureElement(AnnotationElement):
         painter.drawText(QPointF(lx, ly), label)
 
     def paint(self, painter: QPainter):
-        if self.rotation:
-            painter.save()
-            _apply_rotation(painter, self.bounding_rect().center(), self.rotation)
-            self._paint_shadow(painter, self._paint_measure)
-            painter.restore()
-        else:
-            self._paint_shadow(painter, self._paint_measure)
+        self._rotated_paint(painter, lambda p: self._paint_shadow(p, self._paint_measure))
 
     def move_by(self, dx: float, dy: float):
         self.start = QPointF(self.start.x() + dx, self.start.y() + dy)

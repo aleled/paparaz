@@ -1584,3 +1584,167 @@ class TestFixVerification:
                 Command(f"cmd_{i}", lambda: None, lambda: None)
             )
         assert len(c.history._undo_stack) <= 200
+
+
+# ###########################################################################
+# 9. PROJECT FILE (.papraz) TESTS
+# ###########################################################################
+
+class TestProjectFileSaveLoad:
+    """Roundtrip tests for the .papraz project file format."""
+
+    def _make_canvas_with_elements(self):
+        """Create a canvas with a mix of elements for testing."""
+        c = make_canvas(400, 300)
+        c.elements.append(RectElement(QRectF(10, 20, 100, 50), filled=True, style=ElementStyle()))
+        c.elements.append(LineElement(QPointF(0, 0), QPointF(200, 150)))
+        c.elements.append(TextElement(QPointF(50, 60), "hello project"))
+        return c
+
+    def test_save_creates_file(self, tmp_path):
+        from paparaz.core.project import save_project
+        c = self._make_canvas_with_elements()
+        path = str(tmp_path / "test.papraz")
+        save_project(path, c)
+        import os
+        assert os.path.exists(path)
+        assert os.path.getsize(path) > 0
+
+    def test_roundtrip_element_count(self, tmp_path):
+        from paparaz.core.project import save_project, load_project
+        c = self._make_canvas_with_elements()
+        n = len(c.elements)
+        path = str(tmp_path / "test.papraz")
+        save_project(path, c)
+
+        c2 = make_canvas(1, 1)
+        load_project(path, c2)
+        assert len(c2.elements) == n
+
+    def test_roundtrip_element_types(self, tmp_path):
+        from paparaz.core.project import save_project, load_project
+        c = self._make_canvas_with_elements()
+        original_types = [e.element_type for e in c.elements]
+        path = str(tmp_path / "test.papraz")
+        save_project(path, c)
+
+        c2 = make_canvas(1, 1)
+        load_project(path, c2)
+        restored_types = [e.element_type for e in c2.elements]
+        assert restored_types == original_types
+
+    def test_roundtrip_background_size(self, tmp_path):
+        from paparaz.core.project import save_project, load_project
+        c = make_canvas(320, 240)
+        path = str(tmp_path / "test.papraz")
+        save_project(path, c)
+
+        c2 = make_canvas(1, 1)
+        meta = load_project(path, c2)
+        assert meta["width"] == 320
+        assert meta["height"] == 240
+        assert c2._background.width() == 320
+        assert c2._background.height() == 240
+
+    def test_roundtrip_text_content(self, tmp_path):
+        from paparaz.core.project import save_project, load_project
+        c = make_canvas()
+        c.elements.append(TextElement(QPointF(10, 10), "roundtrip text"))
+        path = str(tmp_path / "test.papraz")
+        save_project(path, c)
+
+        c2 = make_canvas(1, 1)
+        load_project(path, c2)
+        text_elems = [e for e in c2.elements if e.element_type == ElementType.TEXT]
+        assert len(text_elems) == 1
+        assert text_elems[0].text == "roundtrip text"
+
+    def test_roundtrip_rect_geometry(self, tmp_path):
+        from paparaz.core.project import save_project, load_project
+        c = make_canvas()
+        c.elements.append(RectElement(QRectF(5, 15, 80, 40), filled=False, style=ElementStyle()))
+        path = str(tmp_path / "test.papraz")
+        save_project(path, c)
+
+        c2 = make_canvas(1, 1)
+        load_project(path, c2)
+        r = c2.elements[0]
+        assert r.element_type == ElementType.RECTANGLE
+        assert r.rect.x() == pytest.approx(5)
+        assert r.rect.y() == pytest.approx(15)
+        assert r.rect.width() == pytest.approx(80)
+        assert r.rect.height() == pytest.approx(40)
+
+    def test_empty_canvas_roundtrip(self, tmp_path):
+        from paparaz.core.project import save_project, load_project
+        c = make_canvas(200, 150)
+        path = str(tmp_path / "empty.papraz")
+        save_project(path, c)
+
+        c2 = make_canvas(1, 1)
+        meta = load_project(path, c2)
+        assert len(c2.elements) == 0
+        assert meta["width"] == 200
+        assert meta["height"] == 150
+
+    def test_meta_contains_dpr(self, tmp_path):
+        from paparaz.core.project import save_project, load_project
+        c = make_canvas(100, 100)
+        path = str(tmp_path / "dpr.papraz")
+        save_project(path, c)
+
+        c2 = make_canvas(1, 1)
+        meta = load_project(path, c2)
+        assert "dpr" in meta
+        assert isinstance(meta["dpr"], float)
+
+    def test_file_is_compressed_binary(self, tmp_path):
+        """Saved file should be binary (base64+zlib), not plain JSON."""
+        from paparaz.core.project import save_project
+        c = make_canvas()
+        path = str(tmp_path / "check.papraz")
+        save_project(path, c)
+        raw = Path(path).read_bytes()
+        # base64 output must not start with '{' (plain JSON)
+        assert not raw.startswith(b"{")
+
+    def test_load_clears_existing_elements(self, tmp_path):
+        from paparaz.core.project import save_project, load_project
+        # Save a project with 1 element
+        c = make_canvas()
+        c.elements.append(RectElement(QRectF(0, 0, 10, 10), filled=True, style=ElementStyle()))
+        path = str(tmp_path / "one.papraz")
+        save_project(path, c)
+
+        # Load into a canvas that already has 3 elements
+        c2 = make_canvas()
+        c2.elements.extend([
+            LineElement(QPointF(0, 0), QPointF(50, 50)),
+            LineElement(QPointF(10, 10), QPointF(60, 60)),
+            LineElement(QPointF(20, 20), QPointF(70, 70)),
+        ])
+        load_project(path, c2)
+        assert len(c2.elements) == 1
+
+    def test_corrupt_file_raises(self, tmp_path):
+        from paparaz.core.project import load_project
+        path = str(tmp_path / "bad.papraz")
+        Path(path).write_bytes(b"this is not valid base64 zlib data!!!")
+        c = make_canvas()
+        with pytest.raises(Exception):
+            load_project(path, c)
+
+    def test_element_from_dict_after_project_load(self, tmp_path):
+        """Verify element_from_dict reconstructs each saved element correctly."""
+        from paparaz.core.project import save_project, load_project
+        c = make_canvas()
+        c.elements.append(ArrowElement(QPointF(0, 0), QPointF(100, 100)))
+        c.elements.append(EllipseElement(QRectF(10, 10, 60, 40), filled=False, style=ElementStyle()))
+        path = str(tmp_path / "types.papraz")
+        save_project(path, c)
+
+        c2 = make_canvas(1, 1)
+        load_project(path, c2)
+        types = {e.element_type for e in c2.elements}
+        assert ElementType.ARROW in types
+        assert ElementType.ELLIPSE in types

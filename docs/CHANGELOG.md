@@ -1,6 +1,6 @@
 # PapaRaZ - Changelog
 
-## [Unreleased] - post-0.9.9
+## [1.0.0] - 2026-04-18
 
 ### .papraz Project File Format
 - **Save / Load annotated sessions** — `Ctrl+Shift+P` saves a `.papraz` file, `Ctrl+Shift+O` opens one

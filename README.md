@@ -8,7 +8,7 @@
 
 <br/>
 
-[![Version](https://img.shields.io/badge/version-0.9.9-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.0.0-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/aleled/paparaz/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![PySide6](https://img.shields.io/badge/PySide6-Qt6-41CD52?style=flat-square&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
@@ -63,7 +63,7 @@ Every annotation is a **discrete, selectable object** — not a flat paint layer
 
 ### Option 1 — Installer (Recommended)
 
-1. Download **[PapaRaZ_Setup_0.9.9.exe](https://github.com/aleled/paparaz/releases/latest)**
+1. Download **[PapaRaZ_Setup_1.0.0.exe](https://github.com/aleled/paparaz/releases/latest)**
 2. Run the installer
 3. Press **PrintScreen** — start capturing
 

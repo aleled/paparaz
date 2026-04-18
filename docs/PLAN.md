@@ -219,6 +219,6 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [x] MeasureTool + MeasureElement test coverage — 77 new tests (was 0)
 - [x] Test suite grown to 776 tests (+102 from 674)
 
-## Current Status: v0.9.9 (post-release) — project file format, drawing bugs, refactor, +102 tests
-**Version**: 0.9.9
+## Current Status: v1.0.0 — first stable release, project file format, 776 tests, GitHub Pages
+**Version**: 1.0.0
 **Last updated**: 2026-04-18

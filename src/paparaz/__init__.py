@@ -1,4 +1,4 @@
 """PapaRaZ - Screen Capture & Annotation Tool."""
 
-__version__ = "0.9.9"
+__version__ = "1.0.0"
 __app_name__ = "PapaRaZ"

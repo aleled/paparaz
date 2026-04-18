@@ -321,6 +321,25 @@ class TextTool(BaseTool):
                     elem.auto_size()
                 self.canvas.set_preview(elem)
                 return
+            # --- Formatting shortcuts (Ctrl+B / Ctrl+I / Ctrl+U) ---
+            if key == Qt.Key.Key_B:
+                self.set_bold(not self.bold)
+                if callable(getattr(self, 'on_format_changed', None)):
+                    self.on_format_changed('bold', self.bold)
+                self.canvas.set_preview(elem)
+                return
+            if key == Qt.Key.Key_I:
+                self.set_italic(not self.italic)
+                if callable(getattr(self, 'on_format_changed', None)):
+                    self.on_format_changed('italic', self.italic)
+                self.canvas.set_preview(elem)
+                return
+            if key == Qt.Key.Key_U:
+                self.set_underline(not getattr(elem, 'underline', False))
+                if callable(getattr(self, 'on_format_changed', None)):
+                    self.on_format_changed('underline', elem.underline)
+                self.canvas.set_preview(elem)
+                return
 
         # --- Commit / Cancel ---
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -539,11 +558,35 @@ class NumberingTool(BaseTool):
         super().__init__(canvas)
         self.marker_size = 16.0
         self.text_color = ""  # Empty = auto-contrast
+        self.number_style = "numeric"  # "numeric" | "alpha" | "roman" | "boxed"
 
     def on_press(self, pos: QPointF, event: QMouseEvent):
+        from paparaz.core.history import Command
+        # Capture counter value before creation so undo can restore it exactly.
+        n = NumberElement._next_number
         style = self.canvas.current_style()
-        elem = NumberElement(pos, size=self.marker_size, text_color=self.text_color, style=style)
-        self.canvas.add_element(elem)
+        # Pass number explicitly to skip the constructor's auto-increment,
+        # then update the class counter ourselves so undo can reverse it.
+        elem = NumberElement(pos, number=n, size=self.marker_size,
+                             text_color=self.text_color,
+                             number_style=self.number_style, style=style)
+        NumberElement._next_number = n + 1
+
+        def do():
+            self.canvas.elements.append(elem)
+            self.canvas.update()
+            self.canvas.elements_changed.emit()
+
+        def undo():
+            NumberElement._next_number = n   # restore counter so next placement reuses the gap
+            if elem in self.canvas.elements:
+                self.canvas.elements.remove(elem)
+            if self.canvas.selected_element is elem:
+                self.canvas.select_element(None)
+            self.canvas.update()
+            self.canvas.elements_changed.emit()
+
+        self.canvas.history.execute(Command(f"Add number {n}", do, undo))
 
     def paint_hover(self, painter: QPainter):
         """Show ghost circle at cursor before clicking."""
@@ -555,18 +598,25 @@ class NumberingTool(BaseTool):
             self._hover_pos.x() - size / 2, self._hover_pos.y() - size / 2,
             size, size,
         )
-        # Ghost circle
+        # Ghost shape (circle or square depending on style)
         color = QColor(style.foreground_color)
         color.setAlpha(60)
         painter.setPen(QPen(QColor(style.foreground_color), 2))
         painter.setBrush(color)
-        painter.drawEllipse(rect)
+        if self.number_style == "boxed":
+            painter.drawRoundedRect(rect, 3, 3)
+        else:
+            painter.drawEllipse(rect)
 
-        # Ghost number
+        # Ghost label (respects current style)
         painter.setPen(QColor(255, 255, 255, 150))
-        font = QFont(style.font_family, max(1, int(size * 0.4)), QFont.Weight.Bold)
+        from paparaz.core.elements import _format_number_label
+        label = _format_number_label(NumberElement._next_number, self.number_style)
+        n_chars = len(label)
+        pt = int(size * (0.4 if n_chars <= 2 else 0.3 if n_chars == 3 else 0.22))
+        font = QFont(style.font_family, max(1, pt), QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(NumberElement._next_number))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
 
 
 class EraserTool(BaseTool):
@@ -845,8 +895,9 @@ def _draw_rotated_selection(painter: QPainter, rect: QRectF, angle_deg: float,
     dx, dy = top_cx - cx, top_cy - cy
     rtcx = cx + dx * cos_r - dy * sin_r
     rtcy = cy + dx * sin_r + dy * cos_r
-    # Rotation handle 30px further in the "up" direction (rotated)
-    rhx = rtcx - sin_r * 30
+    # Rotation handle 30px further in the "up" direction of the rotated box.
+    # In screen coords (y-down), rotating (0,-1) [screen-up] clockwise by angle gives (sin, -cos).
+    rhx = rtcx + sin_r * 30
     rhy = rtcy - cos_r * 30
     painter.setPen(QPen(border_color, 1.5))
     painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -859,15 +910,28 @@ def _draw_rotated_selection(painter: QPainter, rect: QRectF, angle_deg: float,
 
 def _capture_element_geom(elem) -> dict:
     """Capture all geometric data of an element into a plain dict."""
-    from paparaz.core.elements import LineElement, ArrowElement, PenElement, BrushElement, NumberElement
+    from paparaz.core.elements import (
+        LineElement, ArrowElement, PenElement, BrushElement, NumberElement,
+        MeasureElement, CurvedArrowElement,
+    )
     snap: dict = {'rotation': elem.rotation}
-    if hasattr(elem, 'rect') and not isinstance(elem, (LineElement, ArrowElement)):
+    # Rect-based elements (excluding those with their own coord storage)
+    _line_types = (LineElement, ArrowElement, MeasureElement, CurvedArrowElement)
+    if hasattr(elem, 'rect') and not isinstance(elem, _line_types):
         snap['rect'] = QRectF(elem.rect)
-    if isinstance(elem, (LineElement, ArrowElement)):
+    # Line-like: start + end
+    if isinstance(elem, (LineElement, ArrowElement, MeasureElement)):
         snap['start'] = QPointF(elem.start)
         snap['end']   = QPointF(elem.end)
+    # Curved arrow: start + end + control
+    if isinstance(elem, CurvedArrowElement):
+        snap['start']   = QPointF(elem.start)
+        snap['end']     = QPointF(elem.end)
+        snap['control'] = QPointF(elem.control)
+    # Stroke-based: point list
     if isinstance(elem, (PenElement, BrushElement)):
         snap['points'] = [QPointF(p) for p in elem.points]
+    # Number: positional
     if isinstance(elem, NumberElement):
         snap['position'] = QPointF(elem.position)
     return snap
@@ -878,15 +942,13 @@ def _transform_element_geom(snap: dict, t: QTransform, crop_rotation: float) -> 
 
     Rules:
     - rect elements: preserve size, move center, adjust rotation by -crop_rotation
-    - line/arrow (start/end): transform coords, rotation UNCHANGED (coords encode orientation)
-    - pen/brush (points): transform coords, rotation UNCHANGED
+    - line/arrow/measure/curved_arrow (start/end/control): transform coords,
+      rotation adjusted by -crop_rotation (element may have been rotated by user)
+    - pen/brush (points): transform coords,
+      rotation adjusted by -crop_rotation (user may have rotated the stroke)
     - number (position): transform position, adjust rotation by -crop_rotation
     """
-    coord_based = 'start' in snap or 'points' in snap
-    if coord_based:
-        new: dict = {'rotation': snap['rotation']}  # coords already encode orientation
-    else:
-        new: dict = {'rotation': (snap['rotation'] - crop_rotation) % 360.0}
+    new: dict = {'rotation': (snap['rotation'] - crop_rotation) % 360.0}
 
     if 'rect' in snap:
         r = snap['rect']
@@ -901,6 +963,8 @@ def _transform_element_geom(snap: dict, t: QTransform, crop_rotation: float) -> 
         new['start'] = t.map(snap['start'])
     if 'end' in snap:
         new['end'] = t.map(snap['end'])
+    if 'control' in snap:
+        new['control'] = t.map(snap['control'])
     if 'points' in snap:
         new['points'] = [t.map(p) for p in snap['points']]
     if 'position' in snap:
@@ -910,13 +974,19 @@ def _transform_element_geom(snap: dict, t: QTransform, crop_rotation: float) -> 
 
 def _restore_element_geom(elem, snap: dict):
     """Apply a geometry snapshot to an element."""
-    from paparaz.core.elements import LineElement, ArrowElement, PenElement, BrushElement, NumberElement
-    if 'rect' in snap and hasattr(elem, 'rect') and not isinstance(elem, (LineElement, ArrowElement)):
+    from paparaz.core.elements import (
+        LineElement, ArrowElement, PenElement, BrushElement, NumberElement,
+        MeasureElement, CurvedArrowElement,
+    )
+    _line_types = (LineElement, ArrowElement, MeasureElement, CurvedArrowElement)
+    if 'rect' in snap and hasattr(elem, 'rect') and not isinstance(elem, _line_types):
         elem.rect = QRectF(snap['rect'])
     if 'start' in snap:
         elem.start = QPointF(snap['start'])
     if 'end' in snap:
         elem.end = QPointF(snap['end'])
+    if 'control' in snap and isinstance(elem, CurvedArrowElement):
+        elem.control = QPointF(snap['control'])
     if 'points' in snap:
         elem.points = [QPointF(p) for p in snap['points']]
     if 'position' in snap and isinstance(elem, NumberElement):
@@ -1050,9 +1120,14 @@ class CropTool(_RotatableSelectionMixin, BaseTool):
         t.rotate(-rotation)
         t.translate(-cx, -cy)
 
-        # Render new background
+        # Render new background — fill corners with the configured canvas surround color
+        # (falls back to white for non-solid backgrounds like checkerboard/dark/system)
+        _canvas_bg = getattr(self.canvas, '_canvas_bg', 'white')
+        _fill_color = QColor(_canvas_bg) if (
+            _canvas_bg not in ('dark', 'checkerboard', 'system', '') and QColor(_canvas_bg).isValid()
+        ) else QColor(Qt.GlobalColor.white)
         new_bg_pix = QPixmap(w, h)
-        new_bg_pix.fill(Qt.GlobalColor.white)
+        new_bg_pix.fill(_fill_color)
         p = _P(new_bg_pix)
         p.setRenderHint(_P.RenderHint.SmoothPixmapTransform)
         p.setTransform(t)
@@ -1232,6 +1307,7 @@ class SliceTool(_RotatableSelectionMixin, BaseTool):
                 self.canvas.select_element(_new_elem)
                 self.canvas._update_size()
                 self.canvas.update()
+                self.canvas.elements_changed.emit()
 
         else:
             # ------------------------------------------------------------------
@@ -1260,6 +1336,7 @@ class SliceTool(_RotatableSelectionMixin, BaseTool):
                 self.canvas.select_element(_new_elem)
                 self.canvas._update_size()
                 self.canvas.update()
+                self.canvas.elements_changed.emit()
 
         new_elem.style = self.canvas.current_style()
 
@@ -1270,6 +1347,7 @@ class SliceTool(_RotatableSelectionMixin, BaseTool):
             self.canvas.select_element(None)
             self.canvas._update_size()
             self.canvas.update()
+            self.canvas.elements_changed.emit()
 
         self.canvas.history.execute(Command("Slice", do, undo))
         self._cancel()

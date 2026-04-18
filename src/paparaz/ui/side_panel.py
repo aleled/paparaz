@@ -165,6 +165,8 @@ class SidePanel(QWidget):
     fill_tolerance_changed = Signal(int)
     number_size_changed = Signal(float)
     number_text_color_changed = Signal(str)
+    number_style_changed = Signal(str)   # "numeric" | "alpha" | "roman" | "boxed"
+    number_reset_requested = Signal()    # reset counter to 1
     stamp_selected = Signal(str)
     stamp_size_changed = Signal(float)
     text_bold_changed = Signal(bool)
@@ -221,6 +223,7 @@ class SidePanel(QWidget):
         self._text_bg_color = "#FFFF00"
         self._shadow_color = "#80000000"
         self._num_text_color = "#FFFFFF"
+        self._num_style = "numeric"
         self._current_tool = ToolType.SELECT
         self._loading_element = False
 
@@ -543,6 +546,55 @@ class SidePanel(QWidget):
         ntc.addWidget(self._num_text_color_btn)
         ntc.addStretch()
         nl.addLayout(ntc)
+
+        # Style selector row
+        _style_btn_css = (
+            "QToolButton{background:#2a2a3e;border:1px solid #3a3a4e;"
+            "border-radius:3px;color:#ccc;font-size:11px;font-weight:bold;"
+            "padding:1px 4px;min-width:40px;min-height:22px;}"
+            "QToolButton:hover{background:#3a3a4e;}"
+            "QToolButton:checked{background:#740096;border-color:#9e2ac0;color:#fff;}"
+        )
+        nst = QHBoxLayout()
+        nst.setSpacing(2)
+        self._num_style_group = QButtonGroup(self)
+        self._num_style_group.setExclusive(True)
+        _style_defs = [
+            ("numeric", "1·2·3", "Numbers"),
+            ("alpha",   "a·b·c", "Lowercase letters"),
+            ("roman",   "I·II",  "Roman numerals"),
+            ("boxed",   "[1]",   "Boxed numbers (square marker)"),
+        ]
+        self._num_style_btns: dict[str, QToolButton] = {}
+        for key, label, tip in _style_defs:
+            btn = QToolButton()
+            btn.setText(label)
+            btn.setToolTip(tip)
+            btn.setCheckable(True)
+            btn.setStyleSheet(_style_btn_css)
+            btn.setChecked(key == "numeric")
+            self._num_style_group.addButton(btn)
+            nst.addWidget(btn)
+            self._num_style_btns[key] = btn
+            btn.clicked.connect(lambda checked, k=key: self._on_num_style_clicked(k))
+        nl.addLayout(nst)
+
+        # Reset counter row
+        nrc = QHBoxLayout()
+        nrc.setSpacing(3)
+        self._num_reset_btn = QPushButton("↺ Reset counter")
+        self._num_reset_btn.setToolTip("Reset numbering back to 1 (or a)")
+        self._num_reset_btn.setStyleSheet(
+            "QPushButton{background:#2a2a3e;border:1px solid #3a3a4e;"
+            "border-radius:3px;color:#ccc;font-size:11px;padding:3px 6px;}"
+            "QPushButton:hover{background:#3a3a4e;color:#fff;}"
+            "QPushButton:pressed{background:#1a1a2e;}"
+        )
+        self._num_reset_btn.clicked.connect(self._on_num_reset_clicked)
+        nrc.addWidget(self._num_reset_btn)
+        nrc.addStretch()
+        nl.addLayout(nrc)
+
         self._number_widget = self._wrap_layout(nl)
         self._layout.addWidget(self._number_widget)
 
@@ -690,7 +742,7 @@ class SidePanel(QWidget):
             self.shadow_blur_x_changed, self.shadow_blur_y_changed,
             self.rotation_changed,
             self.pixel_size_changed, self.fill_tolerance_changed,
-            self.number_size_changed, self.number_text_color_changed,
+            self.number_size_changed, self.number_text_color_changed, self.number_style_changed,
             self.stamp_size_changed,
             self.text_bold_changed, self.text_italic_changed,
             self.text_underline_changed, self.text_strikethrough_changed,
@@ -757,6 +809,9 @@ class SidePanel(QWidget):
             props["text_direction"] = "rtl" if self._rtl_btn.isChecked() else "ltr"
             props["text_bg_enabled"] = self._text_bg_check.isChecked()
             props["text_bg_color"] = self._text_bg_color
+            props["text_stroke_enabled"] = self._text_stroke_check.isChecked()
+            props["text_stroke_color"] = self._text_stroke_color
+            props["text_stroke_width"] = self._text_stroke_width_slider.value() * 0.5
         if s.get("fill_tol"):
             props["fill_tolerance"] = self._tol_slider.value()
         if s.get("mask"):
@@ -765,6 +820,7 @@ class SidePanel(QWidget):
             props["number_size"] = self._num_size_slider.value()
             props["number_text_color"] = self._num_text_color
             props["number_font_family"] = self._num_font_combo.currentText()
+            props["number_style"] = self._num_style
         if s.get("stamp"):
             props["stamp_size"] = self._stamp_size_slider.value()
             checked = self._stamp_group.checkedButton()
@@ -843,6 +899,22 @@ class SidePanel(QWidget):
             if "text_bg_color" in props:
                 self._text_bg_color = props["text_bg_color"]
                 self._update_swatch(self._text_bg_btn, props["text_bg_color"])
+            if "text_stroke_enabled" in props:
+                v = bool(props["text_stroke_enabled"])
+                self._text_stroke_check.setChecked(v)
+                self._text_stroke_btn.setEnabled(v)
+                self._text_stroke_width_widget.setVisible(v)
+            if "text_stroke_color" in props:
+                self._text_stroke_color = props["text_stroke_color"]
+                self._update_swatch(self._text_stroke_btn, props["text_stroke_color"])
+            if "text_stroke_width" in props:
+                self._text_stroke_width_slider.setValue(int(float(props["text_stroke_width"]) * 2))
+            if "stamp_id" in props:
+                sid = props["stamp_id"]
+                for btn in self._stamp_group.buttons():
+                    if btn.toolTip().lower().replace(" ", "_") == sid:
+                        btn.setChecked(True)
+                        break
             if "fill_tolerance" in props:
                 self._tol_slider.setValue(int(props["fill_tolerance"]))
             if "pixel_size" in props:
@@ -855,6 +927,11 @@ class SidePanel(QWidget):
             if "number_font_family" in props:
                 from PySide6.QtGui import QFont as _QFont
                 self._num_font_combo.setCurrentFont(_QFont(props["number_font_family"]))
+            if "number_style" in props:
+                ns = props["number_style"]
+                self._num_style = ns
+                for k, btn in self._num_style_btns.items():
+                    btn.setChecked(k == ns)
             if "stamp_size" in props:
                 self._stamp_size_slider.setValue(int(props["stamp_size"]))
         finally:
@@ -1070,6 +1147,10 @@ class SidePanel(QWidget):
                 self._num_font_combo.setCurrentFont(QFont(s.font_family))
                 self._num_text_color = element.text_color
                 self._update_swatch(self._num_text_color_btn, element.text_color or "#FFFFFF")
+                ns = getattr(element, "number_style", "numeric")
+                self._num_style = ns
+                for k, btn in self._num_style_btns.items():
+                    btn.setChecked(k == ns)
             if isinstance(element, TextElement):
                 self._font_combo.setCurrentFont(QFont(s.font_family))
                 self._font_size_slider.setValue(s.font_size)
@@ -1199,6 +1280,27 @@ class SidePanel(QWidget):
             w.setPalette(pal)
         self.update()
 
+    # ── Text formatting sync (called by editor when Ctrl+B/I/U pressed) ────────
+
+    def set_text_bold_silent(self, v: bool):
+        """Update Bold button without emitting the changed signal."""
+        old = self._loading_element
+        self._loading_element = True
+        self._bold_btn.setChecked(v)
+        self._loading_element = old
+
+    def set_text_italic_silent(self, v: bool):
+        old = self._loading_element
+        self._loading_element = True
+        self._italic_btn.setChecked(v)
+        self._loading_element = old
+
+    def set_text_underline_silent(self, v: bool):
+        old = self._loading_element
+        self._loading_element = True
+        self._underline_btn.setChecked(v)
+        self._loading_element = old
+
     # ── Recent colors public API ──────────────────────────────────────────────
 
     def set_recent_colors(self, colors: list):
@@ -1326,8 +1428,11 @@ class SidePanel(QWidget):
             return elem
 
         if t == ToolType.NUMBERING:
-            elem = NumberElement(QPointF(55, 28), size=float(self._num_size_slider.value()),
-                                text_color=self._num_text_color, style=style)
+            from paparaz.core.elements import NumberElement as _NE
+            elem = NumberElement(QPointF(55, 28), number=_NE._next_number,
+                                size=float(self._num_size_slider.value()),
+                                text_color=self._num_text_color,
+                                number_style=self._num_style, style=style)
             return elem
 
         return None
@@ -1524,6 +1629,18 @@ class SidePanel(QWidget):
             self._recent_palette.add_color(self._num_text_color)
             if not self._loading_element:
                 self.number_text_color_changed.emit(self._num_text_color)
+
+    def _on_num_style_clicked(self, style: str):
+        self._num_style = style
+        if not self._loading_element:
+            self.number_style_changed.emit(style)
+            self._refresh_tool_preview()
+
+    def _on_num_reset_clicked(self):
+        from paparaz.core.elements import NumberElement as _NE
+        _NE.reset_counter()
+        self.number_reset_requested.emit()
+        self._refresh_tool_preview()
 
     def _apply_palette_fg(self, color: str):
         """Apply a color from the recent palette as foreground."""

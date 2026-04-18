@@ -386,7 +386,9 @@ class MultiEdgeToolbar(QObject):
     def relayout(self, editor_w: int, editor_h: int, side_panel_w: int):
         """Distribute buttons across strips based on available space."""
         cell = BTN + GAP
-        top_avail = editor_w - side_panel_w - 2 * MARGIN
+        # Reserve space for the always-visible overlay close button (26px + 6px margin + gap)
+        CLOSE_BTN_RESERVE = BTN + MARGIN  # ~40px on the right
+        top_avail = editor_w - side_panel_w - 2 * MARGIN - CLOSE_BTN_RESERVE
 
         if top_avail <= 0:
             return
@@ -394,14 +396,18 @@ class MultiEdgeToolbar(QObject):
         n_top_only = max(0, (top_avail + GAP) // cell)
 
         if n_top_only >= N_TOTAL:
-            # All buttons fit in the top strip
+            # All buttons fit in the top strip — no overflow button needed
             self._distribute(N_TOTAL, 0, 0)
             self.right_strip.hide()
             self.bottom_strip.hide()
             return
 
+        # When overflow is needed, reserve extra space for the "…" button itself
+        OVERFLOW_RESERVE = BTN + SEP  # 32 + 12 = 44px
+        top_avail_with_overflow = max(0, top_avail - OVERFLOW_RESERVE)
+
         right_strip_w = BTN + 3 * MARGIN
-        n_top_r = max(0, (top_avail - right_strip_w + GAP) // cell)
+        n_top_r = max(0, (top_avail_with_overflow - right_strip_w + GAP) // cell)
 
         # Body height estimate: editor_h minus (top strip) minus (status bar ~24) minus margins ~12
         body_h = editor_h - (BTN + 2 * MARGIN) - 24 - 12
@@ -417,7 +423,7 @@ class MultiEdgeToolbar(QObject):
         # Need bottom strip as well
         body_h_adj = body_h - BTN - 3 * MARGIN
         n_right_adj = max(0, (body_h_adj + GAP) // cell)
-        n_bottom = max(0, (top_avail - right_strip_w + GAP) // cell)
+        n_bottom = max(0, (top_avail_with_overflow - right_strip_w + GAP) // cell)
         n_top_b = n_top_r  # same width as top when right visible
 
         self._distribute(n_top_b, n_right_adj, n_bottom)

@@ -1,5 +1,55 @@
 # PapaRaZ - Changelog
 
+## [0.9.9] - 2026-04-18
+
+### HiDPI / Retina-Sharp Captures (major fix)
+- Captures on 125–200% scaled displays are now **pixel-perfect** — no more blur
+- Previous code downscaled physical-resolution screenshots with `SmoothTransformation`; replaced with `setDevicePixelRatio(dpr)` so Qt renders full physical pixels
+- Fix applied to all four capture paths: region, fullscreen, active window, repeat-last
+- `render_to_pixmap()` and `render_final()` updated to export at **full physical resolution** — saved PNGs are the actual captured pixel count, not the downscaled logical size
+- Overlay selector (loupe, pixel grid) already sharpened in v0.9.8; editor canvas now matches
+
+### Number Marker — Style Selector & Reset
+- **4 label styles** — switched via new toggle buttons in the Marker panel section:
+  - `1·2·3` Numeric (default)
+  - `a·b·c` Lowercase alpha (a, b, c … z, aa, ab …)
+  - `I·II`  Roman numerals (I, II, III, IV …)
+  - `[1]`   Boxed — same digits rendered in a rounded square instead of a circle
+- **↺ Reset counter** button — resets numbering back to 1 at any time mid-session
+- Counter auto-resets to 1 on every new capture (was persisting across sessions)
+- Ghost hover preview updates in real-time to reflect the active style
+- Long Roman numerals (VIII, XIII …) auto-shrink their font to fit the marker
+- Style is persisted across sessions alongside size / color
+
+### Text Tool — Keyboard Format Shortcuts
+- `Ctrl+B` toggles **Bold** while typing inside a text box
+- `Ctrl+I` toggles **Italic** while typing
+- `Ctrl+U` toggles **Underline** while typing
+- Side-panel Bold / Italic / Underline buttons update live (no flicker) when shortcuts are used
+
+### Recent Colors Palette — Redesigned
+- Replaced single horizontal overflow row with a **2-row × 8-column grid** (16 swatches)
+- Grid fits cleanly in the 186 px side panel (was overflowing by ~135 px)
+- Layout: 8 × (18 px swatch + 2 px gap) = 160 px total width, ~40 px height
+
+### Crop Tool — Rotation Handle Fix
+- Green rotation handle now appears **above** the selection box at all rotation angles
+- Was appearing inside the box at non-zero angles due to a sign error in `sin_r` offset
+- Correct formula: handle offset = `(+sin θ · 30, −cos θ · 30)` (screen up-direction of rotated box)
+
+### Editor — Close Confirmation Dialog
+- Closing an unsaved capture now shows **Save & Exit / Discard & Exit / Cancel**
+- Save is the default action (Enter key)
+- If already saved, editor closes immediately without the dialog
+
+### Toolbar — Overflow & Close Button Layout
+- Reserved space for the **close button** so toolbar buttons never overlap it
+- Reserved space for the `...` overflow button so it is always visible when needed
+
+### Bug Fixes
+- `RectangleTool` / `EllipseTool`: fixed `QPointF(0,0)` being falsy — drag from canvas origin (0,0) now works correctly
+- Save dialog: editor remembers the last-used save directory within a session
+
 ## [0.9.8] - 2026-04-04
 
 ### Measure Tool (D)

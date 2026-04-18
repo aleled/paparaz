@@ -164,17 +164,11 @@ class PapaRazApp(QObject):
 
             cropped = capture_region(self._full_capture, px, py, pw, ph)
 
-            # Downscale physical-pixel capture back to logical pixels so the editor
-            # shows the content at exactly 100% visual scale (1 logical px = 1 canvas px).
+            # Tag the pixmap with the screen's DPR so Qt renders it at full physical
+            # resolution in the editor.  The logical size (width/height) is halved
+            # automatically, keeping element coordinates in logical-pixel space.
             if dpr != 1.0:
-                from PySide6.QtCore import Qt as _Qt
-                lw = max(1, int(round(pw / dpr)))
-                lh = max(1, int(round(ph / dpr)))
-                cropped = cropped.scaled(
-                    lw, lh,
-                    _Qt.AspectRatioMode.IgnoreAspectRatio,
-                    _Qt.TransformationMode.SmoothTransformation,
-                )
+                cropped.setDevicePixelRatio(dpr)
 
             # Save for repeat-last-region
             self._last_capture_rect = rect
@@ -217,15 +211,10 @@ class PapaRazApp(QObject):
         if getattr(self._settings.settings, 'capture_sound', False):
             self._play_shutter_sound()
 
-        # Downscale to logical pixels
+        # Tag with DPR so Qt renders physical pixels at full sharpness.
         dpr = target_screen.devicePixelRatio()
         if dpr != 1.0:
-            geo = target_screen.geometry()
-            pixmap = pixmap.scaled(
-                geo.width(), geo.height(),
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+            pixmap.setDevicePixelRatio(dpr)
 
         # Build cursor element (always — user can DEL to remove)
         cursor_elem = self._cursor_element_fullscreen(target_screen, cursor_pos)
@@ -271,18 +260,12 @@ class PapaRazApp(QObject):
         if getattr(self._settings.settings, 'capture_sound', False):
             self._play_shutter_sound()
 
-        # Downscale if hi-DPI
+        # Tag with DPR so Qt renders physical pixels at full sharpness.
         screen = QApplication.screenAt(QPoint(x + w // 2, y + h // 2))
         if screen:
             dpr = screen.devicePixelRatio()
             if dpr != 1.0:
-                lw = max(1, int(round(w / dpr)))
-                lh = max(1, int(round(h / dpr)))
-                pixmap = pixmap.scaled(
-                    lw, lh,
-                    Qt.AspectRatioMode.IgnoreAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
+                pixmap.setDevicePixelRatio(dpr)
 
         # Build cursor element if enabled
         # Build cursor element (always — user can DEL to remove)
@@ -330,13 +313,7 @@ class PapaRazApp(QObject):
         cropped = capture_region(pixmap, px, py, pw, ph)
 
         if dpr != 1.0:
-            lw = max(1, int(round(pw / dpr)))
-            lh = max(1, int(round(ph / dpr)))
-            cropped = cropped.scaled(
-                lw, lh,
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+            cropped.setDevicePixelRatio(dpr)
 
         # Build cursor element (always — user can DEL to remove)
         cursor_elem = self._cursor_element_for_region(screen, cursor_pos, rect)
@@ -606,8 +583,8 @@ class PapaRazApp(QObject):
             screen = QApplication.primaryScreen()
             if screen:
                 avail = screen.availableGeometry()
-                chrome_w = 16
-                chrome_h = 60
+                chrome_w = 8    # left + right layout margins
+                chrome_h = 100  # toolbar(40) + status(25) + hint(15) + spacing+margins(20)
                 win_w = min(pixmap.width() + chrome_w, avail.width() - 40)
                 win_h = min(pixmap.height() + chrome_h, avail.height() - 40)
                 win_w = max(win_w, 400)

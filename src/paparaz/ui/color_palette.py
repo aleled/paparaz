@@ -1,7 +1,11 @@
-"""RecentColorsPalette — compact swatch bar of recently used colors.
+"""RecentColorsPalette — compact 2-row grid of recently used colors.
 
 Left-click  → apply as foreground color
 Right-click → apply as background color
+
+Layout: 2 rows × 8 columns = 16 swatches, each 18×18 px with 2 px gap.
+Total width ≈ 8 × 20 = 160 px, total height ≈ 2 × 20 = 40 px.
+Fits comfortably in the 186 px side panel.
 
 Usage:
     palette = RecentColorsPalette(colors=["#FF0000", "#00FF00"])
@@ -13,13 +17,13 @@ Usage:
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QToolButton, QSizePolicy, QMenu
+from PySide6.QtWidgets import QWidget, QGridLayout, QToolButton, QSizePolicy
 from PySide6.QtCore import Signal, Qt, QSize
-from PySide6.QtGui import QPixmap, QColor, QPainter, QIcon, QAction
+from PySide6.QtGui import QPixmap, QColor, QPainter, QIcon
 
-MAX_RECENT = 16
+MAX_RECENT = 16        # total swatches
+COLS = 8               # swatches per row → 2 rows of 8
 SWATCH_SIZE = 18       # px, each swatch square
-SWATCH_BORDER = 1
 
 _EMPTY_COLOR = "#2a2a3e"
 
@@ -27,7 +31,7 @@ _EMPTY_COLOR = "#2a2a3e"
 def _make_swatch(color_str: str, size: int = SWATCH_SIZE) -> QIcon:
     pix = QPixmap(size, size)
     p = QPainter(pix)
-    # Checkerboard for transparent / semi-transparent colors
+    # Checkerboard background for transparency preview
     cs = 4
     light, dark = QColor(170, 170, 170), QColor(100, 100, 100)
     for row in range(0, size, cs):
@@ -68,7 +72,7 @@ class _SwatchBtn(QToolButton):
 
     def _refresh(self):
         self.setIcon(_make_swatch(self._color))
-        self.setToolTip(f"Fg: click  ·  Bg: right-click\n{self._color}")
+        self.setToolTip(f"Fg: left-click  ·  Bg: right-click\n{self._color}")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -79,7 +83,12 @@ class _SwatchBtn(QToolButton):
 
 
 class RecentColorsPalette(QWidget):
-    """Horizontal bar of recently used color swatches."""
+    """2-row grid of recently used color swatches.
+
+    Row 0 holds the most recent *COLS* colours; row 1 holds the next *COLS*.
+    Empty slots are hidden so the widget compresses vertically when fewer
+    than *MAX_RECENT* colours have been used.
+    """
 
     fg_requested = Signal(str)   # left-click: set as foreground
     bg_requested = Signal(str)   # right-click: set as background
@@ -89,22 +98,23 @@ class RecentColorsPalette(QWidget):
         super().__init__(parent)
         self._colors: list[str] = []
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(2)
 
         self._btns: list[_SwatchBtn] = []
-        for _ in range(MAX_RECENT):
+        for i in range(MAX_RECENT):
             btn = _SwatchBtn(_EMPTY_COLOR, self)
             btn.left_clicked.connect(self.fg_requested)
             btn.right_clicked.connect(self.bg_requested)
             btn.setVisible(False)
-            layout.addWidget(btn)
+            grid.addWidget(btn, i // COLS, i % COLS)
             self._btns.append(btn)
 
-        layout.addStretch()
+        # Fixed height: accommodate up to 2 rows + spacing
+        rows = (MAX_RECENT + COLS - 1) // COLS
+        self.setFixedHeight(rows * SWATCH_SIZE + (rows - 1) * 2 + 4)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setFixedHeight(SWATCH_SIZE + 4)
 
         if colors:
             for c in reversed(colors):

@@ -1,6 +1,40 @@
 # PapaRaZ QA Findings Report
 
-**Date**: 2026-04-04
+**Last updated**: 2026-04-18
+**Current version**: 0.9.9
+**Test suite**: 653 tests across 4 files, all passing (~13s)
+
+---
+
+## v0.9.9 Fixes (2026-04-18)
+
+### FIX-A: HiDPI capture blur — FIXED
+- **Severity**: High
+- All capture paths now use `pixmap.setDevicePixelRatio(dpr)` instead of `SmoothTransformation` downscale.
+- `render_to_pixmap()` and `render_final()` output at physical pixel size.
+
+### FIX-B: `QPointF(0,0)` falsy in `on_move` — FIXED
+- `RectangleTool.on_move` / `EllipseTool.on_move`: `if self._start:` → `if self._start is not None:`.
+
+### FIX-C: Crop rotation handle inside box at non-zero angles — FIXED
+- Sign error in `_draw_rotated_selection`: corrected to `rhx = rtcx + sin_r * 30`.
+
+### FIX-D: Number counter persisting across editor sessions — FIXED
+- Counter resets to 1 on every new `EditorWindow.__init__`.
+
+### FIX-E: Text `Ctrl+B/I/U` shortcuts missing — FIXED
+- `TextTool.on_key_press` now handles Ctrl+B/I/U; side panel checkboxes sync via `on_format_changed` callback.
+
+### NEW-A: Number marker label styles
+- 4 styles (numeric / alpha / roman / boxed), reset counter, persisted.
+
+### NEW-B: Recent colors palette
+- 2×8 grid replacing overflowing single row.
+
+---
+
+## v0.9.8 Findings (2026-04-04)
+
 **Version**: 0.9.8
 **Test Suite**: 653 tests across 4 files, all passing (~14s)
 

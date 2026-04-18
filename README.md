@@ -4,7 +4,7 @@
 
 <br/>
 
-[![Version](https://img.shields.io/badge/version-0.9.8-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
+[![Version](https://img.shields.io/badge/version-0.9.9-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/aleled/paparaz/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![PySide6](https://img.shields.io/badge/PySide6-Qt6-41CD52?style=flat-square&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
@@ -43,15 +43,15 @@ Every annotation is a **discrete, selectable object** — not a flat paint layer
 | 🌫️ | **Blur / Redact** | Pixelate sensitive regions |
 | 🎯 | **Multi-select** | Rubber-band or Shift+click — group move, group delete, group OCR |
 | 🎛️ | **Floating Properties Panel** | Element preview, drag freely, pin open or auto-hide on deselect |
-| 🎨 | **UI Themes** | Dark, Midnight, Ocean, Forest, Warm, Light |
-| 💾 | **4 Export Formats** | PNG, JPG, SVG (vector), Clipboard |
+| 🖥️ | **HiDPI / Retina-sharp** | Physical-pixel capture on 125–200% displays — no downscale blur |
+| 💾 | **4 Export Formats** | PNG, JPG, SVG (vector), Clipboard — full-resolution output |
 | 🔄 | **200-step Undo/Redo** | Full history — Ctrl+Z / Ctrl+Y |
 | 🔔 | **System Tray** | Runs silently in background, auto-start on login |
 | 🔁 | **Auto-updater** | Checks GitHub releases on startup |
 | 🔍 | **Pixel-precise Capture** | Magnifier loupe, arrow-key precision, on-screen help |
 | 🖱️ | **Cursor Capture** | System cursor captured as deletable element |
 | 📊 | **Status Bar** | Live coords, selection size, zoom control, element count |
-| 6️⃣ | **6 UI Themes** | Dark, Midnight, Ocean, Forest, Warm, Light |
+| 🎨 | **6 UI Themes** | Dark, Midnight, Ocean, Forest, Warm, Light |
 
 ---
 
@@ -59,7 +59,7 @@ Every annotation is a **discrete, selectable object** — not a flat paint layer
 
 ### Option 1 — Installer (Recommended)
 
-1. Download **[PapaRaZ_Setup_0.9.8.exe](https://github.com/aleled/paparaz/releases/latest)**
+1. Download **[PapaRaZ_Setup_0.9.9.exe](https://github.com/aleled/paparaz/releases/latest)**
 2. Run the installer
 3. Press **PrintScreen** — start capturing
 
@@ -121,8 +121,8 @@ python -m paparaz
 <tr><td>➡️ Arrow</td><td><code>A</code></td><td>Color · Width · Dash · Shadow</td></tr>
 <tr><td>▭ Rectangle</td><td><code>R</code></td><td>Color · Fill · Width · Dash · Shadow</td></tr>
 <tr><td>⭕ Ellipse</td><td><code>E</code></td><td>Color · Fill · Width · Dash · Shadow</td></tr>
-<tr><td>🔤 Text</td><td><code>T</code></td><td>Font · Size · Bold · Italic · Underline · Align · RTL · Background</td></tr>
-<tr><td>🔢 Numbering</td><td><code>N</code></td><td>Auto-increment circles · Size · Colors</td></tr>
+<tr><td>🔤 Text</td><td><code>T</code></td><td>Font · Size · Bold · Italic · Underline (Ctrl+B/I/U) · Align · RTL · Background · Stroke</td></tr>
+<tr><td>🔢 Numbering</td><td><code>N</code></td><td>Auto-increment markers · 4 styles (1·2·3 / a·b·c / I·II·III / boxed) · Reset counter · Size · Colors</td></tr>
 <tr><td>🔖 Stamp</td><td><code>S</code></td><td>32 pre-built stamps (solid + transparent-bg + utility text) · Resizable · Rotatable</td></tr>
 <tr><td>↩️ Curved Arrow</td><td><code>Q</code></td><td>Quadratic Bezier with tangent arrowhead · 3-click workflow</td></tr>
 <tr><td>🔬 Eyedropper</td><td><code>I</code></td><td>Sample any pixel · Live 10× loupe · Sets fg or bg color</td></tr>

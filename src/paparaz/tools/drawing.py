@@ -17,6 +17,12 @@ class PenTool(BaseTool):
         super().__init__(canvas)
         self._current: PenElement | None = None
 
+    def on_deactivate(self):
+        """Discard any in-progress stroke when the tool is switched away."""
+        self._current = None
+        self.canvas.set_preview(None)
+        super().on_deactivate()
+
     def on_press(self, pos: QPointF, event: QMouseEvent):
         style = self.canvas.current_style()
         self._current = PenElement(style)
@@ -72,6 +78,12 @@ class HighlightTool(BaseTool):
                 self.canvas._line_width = float(self._effective_width)
             self.canvas._highlight_defaults_set = True
 
+    def on_deactivate(self):
+        """Discard any in-progress stroke when the tool is switched away."""
+        self._current = None
+        self.canvas.set_preview(None)
+        super().on_deactivate()
+
     def on_press(self, pos: QPointF, event: QMouseEvent):
         style = self.canvas.current_style()
         self._current = HighlightElement(style)
@@ -96,6 +108,12 @@ class BrushTool(BaseTool):
         super().__init__(canvas)
         self._current: BrushElement | None = None
 
+    def on_deactivate(self):
+        """Discard any in-progress stroke when the tool is switched away."""
+        self._current = None
+        self.canvas.set_preview(None)
+        super().on_deactivate()
+
     def on_press(self, pos: QPointF, event: QMouseEvent):
         style = self.canvas.current_style()
         self._current = BrushElement(style)
@@ -115,10 +133,17 @@ class BrushTool(BaseTool):
 
 class LineTool(BaseTool):
     tool_type = ToolType.LINE
+    _MIN_LENGTH_SQ = 4  # discard lines shorter than 2 px
 
     def __init__(self, canvas):
         super().__init__(canvas)
         self._current: LineElement | None = None
+
+    def on_deactivate(self):
+        """Discard in-progress line when the tool is switched away."""
+        self._current = None
+        self.canvas.set_preview(None)
+        super().on_deactivate()
 
     def on_press(self, pos: QPointF, event: QMouseEvent):
         style = self.canvas.current_style()
@@ -134,7 +159,10 @@ class LineTool(BaseTool):
 
     def on_release(self, pos: QPointF, event: QMouseEvent):
         if self._current:
-            self.canvas.add_element(self._current)
+            dx = self._current.end.x() - self._current.start.x()
+            dy = self._current.end.y() - self._current.start.y()
+            if dx * dx + dy * dy >= self._MIN_LENGTH_SQ:
+                self.canvas.add_element(self._current)
         self._current = None
         self.canvas.set_preview(None)
 
@@ -161,11 +189,19 @@ class ArrowTool(LineTool):
 
 class RectangleTool(BaseTool):
     tool_type = ToolType.RECTANGLE
+    _MIN_SIZE = 3  # discard rects smaller than 3x3 px
 
     def __init__(self, canvas):
         super().__init__(canvas)
         self._start: QPointF | None = None
         self._current: RectElement | None = None
+
+    def on_deactivate(self):
+        """Discard in-progress rect when the tool is switched away."""
+        self._current = None
+        self._start = None
+        self.canvas.set_preview(None)
+        super().on_deactivate()
 
     def on_press(self, pos: QPointF, event: QMouseEvent):
         style = self.canvas.current_style()
@@ -173,7 +209,7 @@ class RectangleTool(BaseTool):
         self._current = RectElement(QRectF(pos, pos), getattr(self.canvas, "_filled", False), style)
 
     def on_move(self, pos: QPointF, event: QMouseEvent):
-        if self._current and self._start:
+        if self._current is not None and self._start is not None:
             end = pos
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 # Constrain to square
@@ -189,7 +225,9 @@ class RectangleTool(BaseTool):
 
     def on_release(self, pos: QPointF, event: QMouseEvent):
         if self._current:
-            self.canvas.add_element(self._current)
+            r = self._current.rect.normalized()
+            if r.width() >= self._MIN_SIZE and r.height() >= self._MIN_SIZE:
+                self.canvas.add_element(self._current)
         self._current = None
         self._start = None
         self.canvas.set_preview(None)
@@ -197,11 +235,19 @@ class RectangleTool(BaseTool):
 
 class EllipseTool(BaseTool):
     tool_type = ToolType.ELLIPSE
+    _MIN_SIZE = 3  # discard ellipses smaller than 3x3 px
 
     def __init__(self, canvas):
         super().__init__(canvas)
         self._start: QPointF | None = None
         self._current: EllipseElement | None = None
+
+    def on_deactivate(self):
+        """Discard in-progress ellipse when the tool is switched away."""
+        self._current = None
+        self._start = None
+        self.canvas.set_preview(None)
+        super().on_deactivate()
 
     def on_press(self, pos: QPointF, event: QMouseEvent):
         style = self.canvas.current_style()
@@ -209,7 +255,7 @@ class EllipseTool(BaseTool):
         self._current = EllipseElement(QRectF(pos, pos), getattr(self.canvas, "_filled", False), style)
 
     def on_move(self, pos: QPointF, event: QMouseEvent):
-        if self._current and self._start:
+        if self._current is not None and self._start is not None:
             end = pos
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 dx = pos.x() - self._start.x()
@@ -224,7 +270,9 @@ class EllipseTool(BaseTool):
 
     def on_release(self, pos: QPointF, event: QMouseEvent):
         if self._current:
-            self.canvas.add_element(self._current)
+            r = self._current.rect.normalized()
+            if r.width() >= self._MIN_SIZE and r.height() >= self._MIN_SIZE:
+                self.canvas.add_element(self._current)
         self._current = None
         self._start = None
         self.canvas.set_preview(None)

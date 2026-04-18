@@ -283,14 +283,18 @@ class AnnotationCanvas(QWidget):
         self._shadow.blur_x = v
         elem = self.selected_element
         if elem:
+            old = elem.style.shadow.blur_x
             elem.style.shadow.blur_x = v
+            self._record_shadow_attr("Shadow blur X", "blur_x", old, v)
             self.update()
 
     def set_shadow_blur_y(self, v: float):
         self._shadow.blur_y = v
         elem = self.selected_element
         if elem:
+            old = elem.style.shadow.blur_y
             elem.style.shadow.blur_y = v
+            self._record_shadow_attr("Shadow blur Y", "blur_y", old, v)
             self.update()
 
     def set_opacity(self, opacity: float):
@@ -513,17 +517,45 @@ class AnnotationCanvas(QWidget):
 
     def move_up(self):
         if self.selected_element and self.selected_element in self.elements:
-            idx = self.elements.index(self.selected_element)
+            elem = self.selected_element
+            idx = self.elements.index(elem)
             if idx < len(self.elements) - 1:
-                self.elements[idx], self.elements[idx + 1] = self.elements[idx + 1], self.elements[idx]
-                self.update()
+                def do(e=elem):
+                    i = self.elements.index(e)
+                    if i < len(self.elements) - 1:
+                        self.elements[i], self.elements[i + 1] = self.elements[i + 1], self.elements[i]
+                    self.update()
+                    self.elements_changed.emit()
+
+                def undo(e=elem):
+                    i = self.elements.index(e)
+                    if i > 0:
+                        self.elements[i], self.elements[i - 1] = self.elements[i - 1], self.elements[i]
+                    self.update()
+                    self.elements_changed.emit()
+
+                self.history.execute(Command("Move up", do, undo))
 
     def move_down(self):
         if self.selected_element and self.selected_element in self.elements:
-            idx = self.elements.index(self.selected_element)
+            elem = self.selected_element
+            idx = self.elements.index(elem)
             if idx > 0:
-                self.elements[idx], self.elements[idx - 1] = self.elements[idx - 1], self.elements[idx]
-                self.update()
+                def do(e=elem):
+                    i = self.elements.index(e)
+                    if i > 0:
+                        self.elements[i], self.elements[i - 1] = self.elements[i - 1], self.elements[i]
+                    self.update()
+                    self.elements_changed.emit()
+
+                def undo(e=elem):
+                    i = self.elements.index(e)
+                    if i < len(self.elements) - 1:
+                        self.elements[i], self.elements[i + 1] = self.elements[i + 1], self.elements[i]
+                    self.update()
+                    self.elements_changed.emit()
+
+                self.history.execute(Command("Move down", do, undo))
 
     # --- Drag & drop ---
 
@@ -880,7 +912,12 @@ class AnnotationCanvas(QWidget):
     # --- Rendering for export ---
 
     def render_to_pixmap(self) -> QPixmap:
-        result = QPixmap(self._background.size())
+        # Use physical pixel size so HiDPI captures export at full resolution.
+        dpr = self._background.devicePixelRatio()
+        phys_w = max(1, int(self._background.width() * dpr))
+        phys_h = max(1, int(self._background.height() * dpr))
+        result = QPixmap(phys_w, phys_h)
+        result.setDevicePixelRatio(dpr)
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.drawPixmap(0, 0, self._background)
@@ -922,6 +959,7 @@ class AnnotationCanvas(QWidget):
             for elem in self.elements:
                 elem.move_by(ox, oy)
             self._background = new_bg
+            self._refresh_magnifier_backgrounds()
             self._update_size()
             self.update()
 
@@ -932,6 +970,7 @@ class AnnotationCanvas(QWidget):
             for elem in self.elements:
                 elem.move_by(-ox, -oy)
             self._background = QPixmap(old_bg)
+            self._refresh_magnifier_backgrounds()
             self._update_size()
             self.update()
 
@@ -951,6 +990,13 @@ class AnnotationCanvas(QWidget):
         new.move_by(20, 20)
         self.add_element(new)
 
+    def _refresh_magnifier_backgrounds(self):
+        """Update MagnifierElement._background references after the canvas background changes."""
+        from paparaz.core.elements import MagnifierElement
+        for elem in self.elements:
+            if isinstance(elem, MagnifierElement):
+                elem._background = self._background
+
     def crop_canvas(self, rect: QRectF):
         """Crop the canvas to given rect (in canvas coordinates). Undoable."""
         old_bg = QPixmap(self._background)
@@ -964,6 +1010,7 @@ class AnnotationCanvas(QWidget):
             for elem in self.elements:
                 elem.move_by(ox, oy)
             self._background = old_bg.copy(crop)
+            self._refresh_magnifier_backgrounds()
             self._update_size()
             self.update()
 
@@ -971,6 +1018,7 @@ class AnnotationCanvas(QWidget):
             for elem in self.elements:
                 elem.move_by(-ox, -oy)
             self._background = QPixmap(old_bg)
+            self._refresh_magnifier_backgrounds()
             self._update_size()
             self.update()
 

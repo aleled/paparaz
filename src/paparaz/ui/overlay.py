@@ -54,14 +54,25 @@ class RegionSelector(QWidget):
         self._arrow_loupe_pos: QPoint | None = None  # set by arrow keys for loupe
         self._pre_select_pos: QPoint | None = None   # arrow-key position before first click
 
-        # Scale capture (physical pixels) to screen's logical pixel size
-        self._screenshot = screenshot.scaled(
-            self._screen_geo.width(), self._screen_geo.height(),
-            Qt.AspectRatioMode.IgnoreAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        # Keep a QImage copy for fast pixel sampling in the loupe
-        self._src_image = self._screenshot.toImage()
+        # On HiDPI (dpr > 1), keep the screenshot at full physical resolution and
+        # set the device-pixel-ratio flag so Qt renders it sharp (no bilinear blur).
+        # For the loupe pixel-sampler we still need a logical-pixel image so coords
+        # map 1-to-1 with widget-local mouse positions.
+        dpr = screen.devicePixelRatio()
+        if dpr != 1.0 and not screenshot.isNull():
+            display_pix = screenshot.copy()
+            display_pix.setDevicePixelRatio(dpr)
+            self._screenshot = display_pix
+            # Logical-size image for loupe pixel sampling (coord space = widget space)
+            logical_pix = screenshot.scaled(
+                self._screen_geo.width(), self._screen_geo.height(),
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self._src_image = logical_pix.toImage()
+        else:
+            self._screenshot = screenshot
+            self._src_image = screenshot.toImage()
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint

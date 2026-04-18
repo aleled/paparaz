@@ -205,6 +205,14 @@ Each annotation is a discrete object that can be selected, moved, resized, and d
 - [ ] Not started
 - [x] Completed
 
-## Current Status: Phase 8 complete — capture precision, measure tool, text fixes, status bar
-**Version**: 0.9.8
-**Last updated**: 2026-04-04
+- [x] HiDPI / Retina-sharp captures — `setDevicePixelRatio` instead of SmoothTransformation downscale (all capture paths + export)
+- [x] Number marker label styles: numeric / alpha / roman / boxed — toggle buttons + reset counter in side panel
+- [x] Text tool Ctrl+B/I/U shortcuts while editing
+- [x] Recent colors palette redesigned to 2×8 grid (was overflowing single-row)
+- [x] Crop rotation handle sign-error fix (handle always above box at any angle)
+- [x] Editor close confirmation dialog (Save & Exit / Discard / Cancel)
+- [x] Toolbar reserved space for close button + overflow indicator
+
+## Current Status: v0.9.9 — HiDPI sharpness, number styles, text shortcuts, palette redesign
+**Version**: 0.9.9
+**Last updated**: 2026-04-18

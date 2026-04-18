@@ -112,6 +112,10 @@ class EditorWindow(QWidget):
         # Track current tool type for per-tool property persistence
         self._current_tool_type = ToolType.SELECT
 
+        # Unsaved-changes tracking: True when canvas has been saved and not modified since
+        self._was_saved = False
+        self._canvas.elements_changed.connect(self._on_canvas_modified)
+
         # Debounced save timer: writes settings ~2s after the last property change
         self._settings_save_timer = QTimer(self)
         self._settings_save_timer.setSingleShot(True)
@@ -229,6 +233,8 @@ class EditorWindow(QWidget):
         self._side_panel.pixel_size_changed.connect(self._on_pixel_size_changed)
         self._side_panel.number_size_changed.connect(self._on_number_size_changed)
         self._side_panel.number_text_color_changed.connect(self._on_number_text_color_changed)
+        self._side_panel.number_style_changed.connect(self._on_number_style_changed)
+        self._side_panel.number_reset_requested.connect(self._on_number_reset)
         self._side_panel.stamp_selected.connect(self._on_stamp_selected)
         self._side_panel.stamp_size_changed.connect(self._on_stamp_size_changed)
 
@@ -269,6 +275,7 @@ class EditorWindow(QWidget):
             self._side_panel.pixel_size_changed,
             self._side_panel.fill_tolerance_changed,
             self._side_panel.number_size_changed, self._side_panel.number_text_color_changed,
+            self._side_panel.number_style_changed,
             self._side_panel.stamp_selected, self._side_panel.stamp_size_changed,
             self._side_panel.text_bold_changed, self._side_panel.text_italic_changed,
             self._side_panel.text_underline_changed, self._side_panel.text_strikethrough_changed,
@@ -341,7 +348,7 @@ class EditorWindow(QWidget):
 
     # --- Border resize cursor + drag: event filter installed on every child widget ---
 
-    _EDGE_MARGIN = 8
+    _EDGE_MARGIN = 12  # px grab zone at each window edge for resize
     _CURSOR_MAP = {
         Qt.Edge.LeftEdge  | Qt.Edge.TopEdge:    Qt.CursorShape.SizeFDiagCursor,
         Qt.Edge.RightEdge | Qt.Edge.BottomEdge: Qt.CursorShape.SizeFDiagCursor,
@@ -567,6 +574,42 @@ class EditorWindow(QWidget):
         # Sync panel UI without firing signals
         self._side_panel.apply_properties_silent(props)
 
+        # ── Restore tool-instance fields that apply_properties_silent cannot reach
+        # because signals are suppressed during silent loading.
+        if tool_type == ToolType.NUMBERING:
+            if "number_size" in props:
+                self._numbering_tool.marker_size = float(props["number_size"])
+            if "number_text_color" in props:
+                self._numbering_tool.text_color = props["number_text_color"]
+            if "number_style" in props:
+                self._numbering_tool.number_style = props["number_style"]
+        elif tool_type == ToolType.STAMP:
+            if "stamp_id" in props:
+                self._stamp_tool.stamp_id = props["stamp_id"]
+            if "stamp_size" in props:
+                self._stamp_tool.stamp_size = float(props["stamp_size"])
+        elif tool_type == ToolType.MASQUERADE:
+            if "pixel_size" in props:
+                self._masquerade_tool.pixel_size = int(props["pixel_size"])
+        elif tool_type == ToolType.FILL:
+            if "fill_tolerance" in props:
+                fill_tool = self._tools.get(ToolType.FILL)
+                if fill_tool:
+                    fill_tool.tolerance = int(props["fill_tolerance"])
+        elif tool_type == ToolType.TEXT:
+            tt = self._text_tool
+            if "text_bold" in props:          tt.set_bold(bool(props["text_bold"]))
+            if "text_italic" in props:        tt.set_italic(bool(props["text_italic"]))
+            if "text_underline" in props:     tt.set_underline(bool(props["text_underline"]))
+            if "text_strikethrough" in props: tt.strikethrough = bool(props["text_strikethrough"])
+            if "text_alignment" in props:     tt.set_alignment(props["text_alignment"])
+            if "text_direction" in props:     tt.set_direction(props["text_direction"])
+            if "text_bg_enabled" in props:    tt.set_bg_enabled(bool(props["text_bg_enabled"]))
+            if "text_bg_color" in props:      tt.set_bg_color(props["text_bg_color"])
+            if "text_stroke_enabled" in props: tt.set_stroke_enabled(bool(props["text_stroke_enabled"]))
+            if "text_stroke_color" in props:   tt.set_stroke_color(props["text_stroke_color"])
+            if "text_stroke_width" in props:   tt.set_stroke_width(float(props["text_stroke_width"]))
+
     def _save_tool_properties(self, tool_type: ToolType):
         """Snapshot current panel state into the settings dict for tool_type."""
         if not self._settings_manager:
@@ -622,6 +665,9 @@ class EditorWindow(QWidget):
 
     def _on_zoom_changed(self, zoom: float):
         """Adapt window size to fit the zoomed content, clamped to screen."""
+        # Suppress during initial zoom — window was already sized correctly in _open_editor
+        if getattr(self, '_applying_initial_zoom', False):
+            return
         bg = self._canvas._background
         if bg.isNull():
             return
@@ -658,29 +704,38 @@ class EditorWindow(QWidget):
             self._canvas.set_zoom(zoom)
 
     def _apply_default_zoom(self):
-        """Set zoom level based on user preference."""
+        """Set zoom level based on user preference.
+
+        The window geometry was already sized to fit the image in _open_editor, so we
+        suppress the zoom-changed resize handler during this initial zoom application to
+        avoid the window shrinking due to chrome-height estimation errors.
+        """
         if not self._settings_manager:
             return
         s = self._settings_manager.settings
         mode = getattr(s, 'default_zoom', 'fit')
         bg = self._canvas._background
-        if mode == "100":
-            self._canvas.set_zoom(1.0)
-        elif mode == "fill":
-            canvas_w = self._canvas.width()
-            canvas_h = self._canvas.height()
-            if bg.width() > 0 and bg.height() > 0:
-                z = max(canvas_w / bg.width(), canvas_h / bg.height())
-                self._canvas.set_zoom(z)
-        elif mode == "remember":
-            z = getattr(s, 'last_zoom_level', 1.0)
-            self._canvas.set_zoom(max(0.1, min(10.0, z)))
-        else:  # "fit" — default
-            canvas_w = self._canvas.width()
-            canvas_h = self._canvas.height()
-            if bg.width() > 0 and bg.height() > 0:
-                z = min(canvas_w / bg.width(), canvas_h / bg.height(), 1.0)
-                self._canvas.set_zoom(z)
+        self._applying_initial_zoom = True
+        try:
+            if mode == "100":
+                self._canvas.set_zoom(1.0)
+            elif mode == "fill":
+                canvas_w = self._canvas.width()
+                canvas_h = self._canvas.height()
+                if bg.width() > 0 and bg.height() > 0:
+                    z = max(canvas_w / bg.width(), canvas_h / bg.height())
+                    self._canvas.set_zoom(z)
+            elif mode == "remember":
+                z = getattr(s, 'last_zoom_level', 1.0)
+                self._canvas.set_zoom(max(0.1, min(10.0, z)))
+            else:  # "fit" — default
+                canvas_w = self._canvas.width()
+                canvas_h = self._canvas.height()
+                if bg.width() > 0 and bg.height() > 0:
+                    z = min(canvas_w / bg.width(), canvas_h / bg.height(), 1.0)
+                    self._canvas.set_zoom(z)
+        finally:
+            self._applying_initial_zoom = False
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -859,6 +914,17 @@ class EditorWindow(QWidget):
         if isinstance(elem, NumElem):
             elem.text_color = color
             self._canvas.update()
+
+    def _on_number_style_changed(self, style: str):
+        self._numbering_tool.number_style = style
+        elem = self._canvas.selected_element
+        if isinstance(elem, NumElem):
+            elem.number_style = style
+            self._canvas.update()
+
+    def _on_number_reset(self):
+        NumElem.reset_counter()
+        self._canvas.update()
 
     def _on_stamp_selected(self, stamp_id):
         self._stamp_tool.stamp_id = stamp_id
@@ -1157,6 +1223,17 @@ class EditorWindow(QWidget):
 
         # Wire text-tool editing state changes → enable/disable all shortcuts
         self._text_tool.on_editing_changed = self._on_text_editing_changed
+        # Wire text-tool Ctrl+B/I/U → sync side panel checkboxes
+        self._text_tool.on_format_changed = self._on_text_format_shortcut
+
+    def _on_text_format_shortcut(self, attr: str, value: bool):
+        """Called when Ctrl+B/I/U is pressed in a text box — sync the side panel checkbox."""
+        if attr == 'bold':
+            self._side_panel.set_text_bold_silent(value)
+        elif attr == 'italic':
+            self._side_panel.set_text_italic_silent(value)
+        elif attr == 'underline':
+            self._side_panel.set_text_underline_silent(value)
 
     def _on_text_editing_changed(self, editing: bool):
         """Called by TextTool when typing starts (editing=True) or ends (editing=False).
@@ -1171,8 +1248,17 @@ class EditorWindow(QWidget):
         if editing:
             self._canvas.setFocus()
 
+    def _on_canvas_modified(self):
+        """Mark as unsaved whenever the canvas changes (elements added/removed/moved)."""
+        self._was_saved = False
+
     def _confirm_close(self):
+        # No annotations at all → just close
         if not self._canvas.elements and not self._canvas._preview_element:
+            self.close()
+            return
+        # Already saved, no changes since → close without prompting
+        if self._was_saved:
             self.close()
             return
         # Respect the "confirm before closing" setting
@@ -1184,9 +1270,9 @@ class EditorWindow(QWidget):
         msg.setWindowTitle("Close Editor")
         msg.setWindowFlags(msg.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         msg.setIcon(QMessageBox.Icon.Warning)
-        msg.setText("Are you sure you want to close?")
+        msg.setText("You have unsaved changes.")
         msg.setInformativeText(
-            "You have unsaved annotations. Any changes will be lost."
+            "Would you like to save before closing?"
         )
         msg.setStyleSheet(
             "QMessageBox { background: #1a1a2e; color: #ddd; }"
@@ -1200,17 +1286,19 @@ class EditorWindow(QWidget):
             "QPushButton:default { border: 1px solid #740096; }"
         )
 
-        copy_btn   = msg.addButton("Copy to Clipboard && Exit", QMessageBox.ButtonRole.AcceptRole)
-        exit_btn   = msg.addButton("Discard && Exit",            QMessageBox.ButtonRole.DestructiveRole)
-        cancel_btn = msg.addButton("Cancel",                     QMessageBox.ButtonRole.RejectRole)
-        msg.setDefaultButton(cancel_btn)
+        save_btn   = msg.addButton("Save && Exit",   QMessageBox.ButtonRole.AcceptRole)
+        discard_btn = msg.addButton("Discard && Exit", QMessageBox.ButtonRole.DestructiveRole)
+        cancel_btn = msg.addButton("Cancel",           QMessageBox.ButtonRole.RejectRole)
+        msg.setDefaultButton(save_btn)
         msg.exec()
 
         clicked = msg.clickedButton()
-        if clicked is copy_btn:
-            copy_to_clipboard(self._canvas.render_to_pixmap())
-            self.close()
-        elif clicked is exit_btn:
+        if clicked is save_btn:
+            self._save_as(force_dialog=True)
+            # Only close if the save completed (was_saved becomes True)
+            if self._was_saved:
+                self.close()
+        elif clicked is discard_btn:
             self.close()
 
     # --- Save / Copy / Paste / Pin ---
@@ -1260,6 +1348,11 @@ class EditorWindow(QWidget):
             )
             if not path:
                 return
+            # Remember the directory the user navigated to for next time
+            if sm and s:
+                chosen_dir = str(Path(path).parent)
+                if chosen_dir != getattr(s, 'save_directory', ''):
+                    s.save_directory = chosen_dir
 
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1279,6 +1372,7 @@ class EditorWindow(QWidget):
             s.save_counter = counter + 1
             sm.add_recent(str(path))   # also saves settings
 
+        self._was_saved = True
         self.file_saved.emit(str(path))
 
         # Post-save actions

@@ -45,8 +45,16 @@ def copy_to_clipboard(pixmap: QPixmap):
 
 
 def render_final(background: QPixmap, paint_callback=None) -> QPixmap:
-    """Render the background with all annotations as a single pixmap."""
-    result = QPixmap(background.size())
+    """Render the background with all annotations as a single pixmap.
+
+    The result is created at physical pixel resolution so that HiDPI captures
+    are exported at full quality.  The DPR is preserved on the returned pixmap.
+    """
+    dpr = background.devicePixelRatio()
+    phys_w = max(1, int(background.width() * dpr))
+    phys_h = max(1, int(background.height() * dpr))
+    result = QPixmap(phys_w, phys_h)
+    result.setDevicePixelRatio(dpr)
     painter = QPainter(result)
     painter.drawPixmap(0, 0, background)
     if paint_callback:

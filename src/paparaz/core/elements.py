@@ -1223,6 +1223,14 @@ class TextElement(AnnotationElement):
         d["stroke_enabled"] = self.stroke_enabled
         d["stroke_color"]   = self.stroke_color
         d["stroke_width"]   = self.stroke_width
+        # Alignment and direction (added in v0.9.9 — not serialised before)
+        if self.alignment == Qt.AlignmentFlag.AlignCenter:
+            d["alignment"] = "center"
+        elif self.alignment == Qt.AlignmentFlag.AlignRight:
+            d["alignment"] = "right"
+        else:
+            d["alignment"] = "left"
+        d["direction"] = "rtl" if self.direction == Qt.LayoutDirection.RightToLeft else "ltr"
         return d
 
     @classmethod
@@ -1240,8 +1248,51 @@ class TextElement(AnnotationElement):
         elem.stroke_enabled = d.get("stroke_enabled", False)
         elem.stroke_color = d.get("stroke_color", "#000000")
         elem.stroke_width = d.get("stroke_width", 2)
+        # Alignment and direction (backward-compatible: default left/ltr if absent)
+        _align_map = {
+            "center": Qt.AlignmentFlag.AlignCenter,
+            "right":  Qt.AlignmentFlag.AlignRight,
+            "left":   Qt.AlignmentFlag.AlignLeft,
+        }
+        elem.alignment = _align_map.get(d.get("alignment", "left"), Qt.AlignmentFlag.AlignLeft)
+        elem.direction = (Qt.LayoutDirection.RightToLeft
+                          if d.get("direction") == "rtl"
+                          else Qt.LayoutDirection.LeftToRight)
         elem._apply_base_dict(d)
         return elem
+
+
+def _format_number_label(n: int, style: str) -> str:
+    """Convert a counter integer to a display string based on *style*.
+
+    Styles:
+    - ``"numeric"``  – 1, 2, 3 …
+    - ``"alpha"``    – a, b, c … z, aa, ab …
+    - ``"roman"``    – I, II, III, IV …
+    - ``"boxed"``    – 1, 2, 3 … (same digits; shape is square in renderer)
+    """
+    if style == "alpha":
+        result = ""
+        m = n
+        while m > 0:
+            m, r = divmod(m - 1, 26)
+            result = chr(ord("a") + r) + result
+        return result
+    if style == "roman":
+        vals = [
+            (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
+            (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+            (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+        ]
+        result = ""
+        m = n
+        for v, s in vals:
+            while m >= v:
+                result += s
+                m -= v
+        return result
+    # "numeric" or "boxed" or unknown
+    return str(n)
 
 
 class NumberElement(AnnotationElement):
@@ -1254,12 +1305,13 @@ class NumberElement(AnnotationElement):
         cls._next_number = 1
 
     def __init__(self, position: QPointF = QPointF(), number: Optional[int] = None,
-                 size: float = 28, text_color: str = "",
+                 size: float = 28, text_color: str = "", number_style: str = "numeric",
                  style: Optional[ElementStyle] = None):
         super().__init__(ElementType.NUMBER, style)
         self.position = position
         self.size = size
         self.text_color = text_color  # Empty = auto-contrast
+        self.number_style = number_style  # "numeric" | "alpha" | "roman" | "boxed"
         if number is None:
             self.number = NumberElement._next_number
             NumberElement._next_number += 1
@@ -1295,21 +1347,41 @@ class NumberElement(AnnotationElement):
 
     def _paint_number(self, painter: QPainter):
         rect = self.bounding_rect()
+        num_style = getattr(self, "number_style", "numeric")
+        label = _format_number_label(self.number, num_style)
+        use_square = (num_style == "boxed")
+
         if self.style.shadow.enabled:
             painter.save()
             painter.translate(self.style.shadow.offset_x, self.style.shadow.offset_y)
             painter.setOpacity(painter.opacity() * 0.4)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(self.style.shadow.color))
-            painter.drawEllipse(rect)
+            if use_square:
+                painter.drawRoundedRect(rect, 3, 3)
+            else:
+                painter.drawEllipse(rect)
             painter.restore()
+
         painter.setPen(QPen(QColor(self.style.foreground_color), 2))
         painter.setBrush(QColor(self.style.foreground_color))
-        painter.drawEllipse(rect)
+        if use_square:
+            painter.drawRoundedRect(rect, 3, 3)
+        else:
+            painter.drawEllipse(rect)
+
         painter.setPen(self._get_text_color())
-        font = QFont(self.style.font_family, max(1, int(self.size * 0.45)), QFont.Weight.Bold)
+        # Scale font down for longer labels (roman numerals, multi-char alpha)
+        n_chars = len(label)
+        if n_chars <= 2:
+            pt = int(self.size * 0.45)
+        elif n_chars == 3:
+            pt = int(self.size * 0.33)
+        else:
+            pt = int(self.size * 0.25)
+        font = QFont(self.style.font_family, max(1, pt), QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(self.number))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
 
     def move_by(self, dx: float, dy: float):
         self.position = QPointF(self.position.x() + dx, self.position.y() + dy)
@@ -1320,6 +1392,7 @@ class NumberElement(AnnotationElement):
         d["number"] = self.number
         d["size"] = self.size
         d["text_color"] = self.text_color
+        d["number_style"] = getattr(self, "number_style", "numeric")
         return d
 
     @classmethod
@@ -1327,6 +1400,7 @@ class NumberElement(AnnotationElement):
         pos = d.get("position", (0, 0))
         elem = cls(QPointF(pos[0], pos[1]), d.get("number", 1),
                    d.get("size", 28), d.get("text_color", ""),
+                   number_style=d.get("number_style", "numeric"),
                    style=AnnotationElement._style_from_dict(d))
         elem._apply_base_dict(d)
         return elem

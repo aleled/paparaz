@@ -4,6 +4,10 @@
 
 <br/>
 
+### 🌐 [**aleled.github.io/paparaz**](https://aleled.github.io/paparaz/) — Download &amp; Feature Page
+
+<br/>
+
 [![Version](https://img.shields.io/badge/version-0.9.9-740096?style=flat-square)](https://github.com/aleled/paparaz/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4?style=flat-square&logo=windows&logoColor=white)](https://github.com/aleled/paparaz/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)

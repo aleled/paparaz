@@ -1686,6 +1686,159 @@ class TestTextCursorNavigation:
         assert elem.text == "ac"
         assert elem.cursor_pos == 1
 
+    def test_backspace_at_start_is_noop(self):
+        elem = self._create_text("abc")
+        key(self.tool, Qt.Key.Key_Home)
+        key(self.tool, Qt.Key.Key_Backspace)
+        assert elem.text == "abc"
+        assert elem.cursor_pos == 0
+
+    def test_delete_key_removes_char_ahead(self):
+        elem = self._create_text("abc")
+        key(self.tool, Qt.Key.Key_Home)
+        key(self.tool, Qt.Key.Key_Delete)
+        assert elem.text == "bc"
+        assert elem.cursor_pos == 0
+
+    def test_delete_at_end_is_noop(self):
+        elem = self._create_text("abc")
+        key(self.tool, Qt.Key.Key_Delete)
+        assert elem.text == "abc"
+
+    def test_shift_right_builds_selection(self):
+        elem = self._create_text("hello")
+        key(self.tool, Qt.Key.Key_Home)
+        key(self.tool, Qt.Key.Key_Right, mods=Qt.KeyboardModifier.ShiftModifier)
+        key(self.tool, Qt.Key.Key_Right, mods=Qt.KeyboardModifier.ShiftModifier)
+        assert elem.sel_start == 0
+        assert elem.cursor_pos == 2
+
+    def test_shift_left_builds_selection_backwards(self):
+        elem = self._create_text("hello")
+        key(self.tool, Qt.Key.Key_Left, mods=Qt.KeyboardModifier.ShiftModifier)
+        key(self.tool, Qt.Key.Key_Left, mods=Qt.KeyboardModifier.ShiftModifier)
+        assert elem.sel_start == 5
+        assert elem.cursor_pos == 3
+
+    def test_left_with_selection_collapses_to_left_edge(self):
+        elem = self._create_text("hello")
+        key(self.tool, Qt.Key.Key_A, mods=Qt.KeyboardModifier.ControlModifier)
+        assert elem.sel_range() == (0, 5)
+        key(self.tool, Qt.Key.Key_Left)
+        assert elem.sel_start == -1
+        assert elem.cursor_pos == 0
+
+    def test_right_with_selection_collapses_to_right_edge(self):
+        elem = self._create_text("hello")
+        key(self.tool, Qt.Key.Key_A, mods=Qt.KeyboardModifier.ControlModifier)
+        key(self.tool, Qt.Key.Key_Right)
+        assert elem.sel_start == -1
+        assert elem.cursor_pos == 5
+
+    def test_backspace_deletes_selection(self):
+        elem = self._create_text("hello")
+        key(self.tool, Qt.Key.Key_A, mods=Qt.KeyboardModifier.ControlModifier)
+        key(self.tool, Qt.Key.Key_Backspace)
+        assert elem.text == ""
+        assert elem.cursor_pos == 0
+        assert elem.sel_start == -1
+
+    def test_delete_key_removes_selection(self):
+        elem = self._create_text("abcde")
+        key(self.tool, Qt.Key.Key_Home)
+        key(self.tool, Qt.Key.Key_Right, mods=Qt.KeyboardModifier.ShiftModifier)
+        key(self.tool, Qt.Key.Key_Right, mods=Qt.KeyboardModifier.ShiftModifier)
+        key(self.tool, Qt.Key.Key_Delete)
+        assert elem.text == "cde"
+        assert elem.cursor_pos == 0
+
+    def test_type_replaces_selection(self):
+        elem = self._create_text("hello")
+        key(self.tool, Qt.Key.Key_A, mods=Qt.KeyboardModifier.ControlModifier)
+        key(self.tool, 0, text="X")
+        assert elem.text == "X"
+        assert elem.cursor_pos == 1
+        assert elem.sel_start == -1
+
+    def test_ctrl_left_word_nav(self):
+        elem = self._create_text("hello world")
+        # cursor is at 11 (end); Ctrl+Left should jump to start of "world" (6)
+        key(self.tool, Qt.Key.Key_Left, mods=Qt.KeyboardModifier.ControlModifier)
+        assert elem.cursor_pos == 6
+
+    def test_ctrl_right_word_nav(self):
+        elem = self._create_text("hello world")
+        key(self.tool, Qt.Key.Key_Home)
+        # Ctrl+Right skips the word and trailing space → lands at start of next word (6)
+        key(self.tool, Qt.Key.Key_Right, mods=Qt.KeyboardModifier.ControlModifier)
+        assert elem.cursor_pos == 6
+
+    def test_enter_inserts_newline(self):
+        elem = self._create_text("ab")
+        key(self.tool, Qt.Key.Key_Home)
+        key(self.tool, Qt.Key.Key_Right)  # cursor at 1
+        key(self.tool, Qt.Key.Key_Return)
+        assert elem.text == "a\nb"
+        assert elem.cursor_pos == 2  # after the \n
+
+    def test_ctrl_enter_finalizes(self):
+        self._create_text("done")
+        key(self.tool, Qt.Key.Key_Return, mods=Qt.KeyboardModifier.ControlModifier)
+        assert self.tool._active_text is None
+        assert len(self.c.elements) == 1
+
+    def test_cut_removes_selection_and_copies(self):
+        elem = self._create_text("abcde")
+        key(self.tool, Qt.Key.Key_Home)
+        key(self.tool, Qt.Key.Key_Right, mods=Qt.KeyboardModifier.ShiftModifier)
+        key(self.tool, Qt.Key.Key_Right, mods=Qt.KeyboardModifier.ShiftModifier)
+        key(self.tool, Qt.Key.Key_X, mods=Qt.KeyboardModifier.ControlModifier)
+        assert elem.text == "cde"
+        assert elem.cursor_pos == 0
+        assert elem.sel_start == -1
+
+    def test_copy_does_not_modify_text(self):
+        elem = self._create_text("hello")
+        key(self.tool, Qt.Key.Key_A, mods=Qt.KeyboardModifier.ControlModifier)
+        key(self.tool, Qt.Key.Key_C, mods=Qt.KeyboardModifier.ControlModifier)
+        assert elem.text == "hello"  # text unchanged after copy
+
+    def test_ctrl_b_toggles_bold(self):
+        self._create_text("hi")
+        was_bold = self.tool.bold
+        key(self.tool, Qt.Key.Key_B, mods=Qt.KeyboardModifier.ControlModifier)
+        assert self.tool.bold == (not was_bold)
+
+    def test_ctrl_i_toggles_italic(self):
+        self._create_text("hi")
+        was_italic = self.tool.italic
+        key(self.tool, Qt.Key.Key_I, mods=Qt.KeyboardModifier.ControlModifier)
+        assert self.tool.italic == (not was_italic)
+
+    def test_ctrl_u_toggles_underline(self):
+        self._create_text("hi")
+        elem = self.tool._active_text
+        was_ul = getattr(elem, 'underline', False)
+        key(self.tool, Qt.Key.Key_U, mods=Qt.KeyboardModifier.ControlModifier)
+        assert elem.underline == (not was_ul)
+
+    def test_multiline_up_down_navigation(self):
+        elem = self._create_text("line1")
+        key(self.tool, Qt.Key.Key_Return)
+        for ch in "line2":
+            key(self.tool, 0, text=ch)
+        # cursor is at end of "line1\nline2" (11)
+        assert elem.cursor_pos == 11
+        key(self.tool, Qt.Key.Key_Up)
+        # should land somewhere on line1 (cursor_pos in 0–5)
+        assert 0 <= elem.cursor_pos <= 5
+
+    def test_non_printable_key_ignored(self):
+        elem = self._create_text("abc")
+        before = elem.text
+        key(self.tool, Qt.Key.Key_F1, text="")
+        assert elem.text == before  # no change
+
 
 # ===========================================================================
 # 29. FillTool — Basic Behavior

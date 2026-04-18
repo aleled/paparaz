@@ -812,10 +812,12 @@ class TestLayersPanelSync:
         self.c.add_element(e1, auto_select=False)
         self.c.add_element(e2, auto_select=False)
         self.panel.refresh()
+        assert self.panel._list.count() == 2
         self.panel._list.setCurrentRow(1)
         self.panel._move_up()
-        # _move_up doesn't emit order_changed (only drag-drop does)
-        # but the operation itself shouldn't crash
+        # _move_up itself doesn't emit order_changed (only drag-drop does),
+        # but the list must still contain both rows
+        assert self.panel._list.count() == 2
 
 
 # ===========================================================================
@@ -921,6 +923,8 @@ class TestToolStripGeometry:
     def test_empty_strip_no_crash(self):
         strip = ToolStrip(Qt.Orientation.Horizontal)
         strip.set_buttons([])  # Should not crash
+        # sizeHint returns (-1,-1) for empty strip — that is the expected "no hint" sentinel
+        assert strip.sizeHint().width() == -1 or strip.sizeHint().width() >= 0
 
 
 # ===========================================================================

@@ -206,8 +206,8 @@ class TestBoundaryEdgeCases:
         tool = RectangleTool(c)
         c.set_tool(tool)
         drag(tool, QPointF(100, 100), QPointF(100, 100))
-        # Zero-area rect should still be added (tool doesn't filter)
-        # This test documents the behavior
+        # Zero-area rect is smaller than _MIN_SIZE (3 px) — should NOT be added
+        assert len(c.elements) == 0, "Zero-area rectangle must not be committed"
 
     def test_canvas_1x1(self):
         c = make_canvas(1, 1)

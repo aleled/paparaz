@@ -1303,6 +1303,7 @@ class SliceTool(_RotatableSelectionMixin, BaseTool):
                 p2.drawPolygon(_poly)
                 p2.end()
                 self.canvas._background = new_bg
+                self.canvas._refresh_magnifier_backgrounds()
                 self.canvas.elements.append(_new_elem)
                 self.canvas.select_element(_new_elem)
                 self.canvas._update_size()
@@ -1332,6 +1333,7 @@ class SliceTool(_RotatableSelectionMixin, BaseTool):
                 p2.fillRect(_clip, _fill)
                 p2.end()
                 self.canvas._background = new_bg
+                self.canvas._refresh_magnifier_backgrounds()
                 self.canvas.elements.append(_new_elem)
                 self.canvas.select_element(_new_elem)
                 self.canvas._update_size()
@@ -1344,6 +1346,7 @@ class SliceTool(_RotatableSelectionMixin, BaseTool):
             if _new_elem in self.canvas.elements:
                 self.canvas.elements.remove(_new_elem)
             self.canvas._background = QPixmap(_old)
+            self.canvas._refresh_magnifier_backgrounds()
             self.canvas.select_element(None)
             self.canvas._update_size()
             self.canvas.update()

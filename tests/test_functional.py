@@ -35,7 +35,7 @@ from paparaz.core.elements import (
     TextElement, NumberElement, MaskElement, StampElement,
     RectElement, EllipseElement, PenElement, BrushElement,
     LineElement, ArrowElement, ImageElement, ElementStyle, Shadow,
-    MagnifierElement,
+    MagnifierElement, MeasureElement,
 )
 from paparaz.core.history import HistoryManager, Command
 from paparaz.core.settings import AppSettings, SettingsManager, ToolDefaults
@@ -44,7 +44,7 @@ from paparaz.tools.base import ToolType
 from paparaz.tools.select import SelectTool
 from paparaz.tools.drawing import (
     PenTool, BrushTool, LineTool, ArrowTool, RectangleTool, EllipseTool,
-    HighlightTool, CurvedArrowTool,
+    HighlightTool, CurvedArrowTool, MeasureTool,
 )
 from paparaz.tools.special import (
     TextTool, NumberingTool, EraserTool, MasqueradeTool, FillTool, StampTool,
@@ -2560,3 +2560,234 @@ class TestToolSectionsMappings:
         for t in [ToolType.SELECT, ToolType.PEN, ToolType.RECTANGLE,
                   ToolType.TEXT, ToolType.FILL, ToolType.STAMP]:
             panel.update_for_tool(t)  # should not crash
+
+
+# ===========================================================================
+# MeasureTool — comprehensive workflow tests
+# ===========================================================================
+
+class TestMeasureToolWorkflow:
+    """End-to-end workflow tests for MeasureTool and MeasureElement."""
+
+    def setup_method(self):
+        self.c = make_canvas()
+        self.tool = MeasureTool(self.c)
+        self.c.set_tool(self.tool)
+
+    # ── 1. Drag creates a MeasureElement ────────────────────────────────────
+
+    def test_drag_creates_measure_element(self):
+        drag(self.tool, QPointF(50, 50), QPointF(200, 50))
+        assert len(self.c.elements) == 1
+        assert isinstance(self.c.elements[0], MeasureElement)
+
+    def test_element_added_to_canvas_elements(self):
+        """Element must live in canvas.elements after release."""
+        assert len(self.c.elements) == 0
+        drag(self.tool, QPointF(10, 10), QPointF(110, 10))
+        assert len(self.c.elements) == 1
+
+    # ── 2. Start/end points are stored correctly ─────────────────────────────
+
+    def test_start_end_points_axis_aligned(self):
+        drag(self.tool, QPointF(20, 30), QPointF(120, 30))
+        elem = self.c.elements[0]
+        assert elem.start == QPointF(20, 30)
+        assert elem.end == QPointF(120, 30)
+
+    def test_start_end_points_diagonal(self):
+        drag(self.tool, QPointF(0, 0), QPointF(300, 400))
+        elem = self.c.elements[0]
+        assert elem.start == QPointF(0, 0)
+        assert elem.end == QPointF(300, 400)
+
+    # ── 3. to_dict / from_dict round-trip ────────────────────────────────────
+
+    def test_to_dict_contains_start_end(self):
+        drag(self.tool, QPointF(10, 20), QPointF(110, 80))
+        elem = self.c.elements[0]
+        d = elem.to_dict()
+        assert "start" in d
+        assert "end" in d
+        assert d["start"] == pytest.approx((10.0, 20.0))
+        assert d["end"] == pytest.approx((110.0, 80.0))
+
+    def test_to_dict_contains_type(self):
+        drag(self.tool, QPointF(10, 20), QPointF(110, 80))
+        elem = self.c.elements[0]
+        d = elem.to_dict()
+        assert d.get("type") == "MEASURE"
+
+    def test_from_dict_roundtrip_preserves_start_end(self):
+        drag(self.tool, QPointF(5, 15), QPointF(205, 115))
+        elem = self.c.elements[0]
+        d = elem.to_dict()
+        restored = MeasureElement.from_dict(d)
+        assert restored.start.x() == pytest.approx(elem.start.x())
+        assert restored.start.y() == pytest.approx(elem.start.y())
+        assert restored.end.x() == pytest.approx(elem.end.x())
+        assert restored.end.y() == pytest.approx(elem.end.y())
+
+    def test_from_dict_roundtrip_preserves_style(self):
+        self.c._fg_color = "#ff0000"
+        self.c._line_width = 5.0
+        drag(self.tool, QPointF(0, 0), QPointF(100, 0))
+        elem = self.c.elements[0]
+        d = elem.to_dict()
+        restored = MeasureElement.from_dict(d)
+        assert restored.style.foreground_color == elem.style.foreground_color
+        assert restored.style.line_width == pytest.approx(elem.style.line_width)
+
+    # ── 4. Undo removes, redo restores ───────────────────────────────────────
+
+    def test_undo_removes_element(self):
+        drag(self.tool, QPointF(50, 50), QPointF(250, 50))
+        assert len(self.c.elements) == 1
+        self.c.history.undo()
+        assert len(self.c.elements) == 0
+
+    def test_redo_restores_element(self):
+        drag(self.tool, QPointF(50, 50), QPointF(250, 50))
+        self.c.history.undo()
+        assert len(self.c.elements) == 0
+        self.c.history.redo()
+        assert len(self.c.elements) == 1
+        assert isinstance(self.c.elements[0], MeasureElement)
+
+    def test_undo_redo_undo_cycle(self):
+        drag(self.tool, QPointF(50, 50), QPointF(250, 50))
+        self.c.history.undo()
+        self.c.history.redo()
+        self.c.history.undo()
+        assert len(self.c.elements) == 0
+
+    # ── 5. Zero-length drag (click without move) ──────────────────────────────
+
+    def test_zero_length_drag_does_not_add_element(self):
+        """LineTool requires length^2 >= _MIN_LENGTH_SQ=4; a zero drag is rejected."""
+        click(self.tool, QPointF(100, 100))
+        assert len(self.c.elements) == 0
+
+    def test_very_short_drag_does_not_add_element(self):
+        """Drag shorter than 2 px should be discarded (same threshold as LineTool)."""
+        drag(self.tool, QPointF(100, 100), QPointF(101, 100))
+        assert len(self.c.elements) == 0
+
+    # ── 6. Paint doesn't crash ───────────────────────────────────────────────
+
+    def test_paint_no_crash(self):
+        """paint() must not raise on a valid QPixmap target."""
+        from PySide6.QtGui import QPainter
+        elem = MeasureElement(QPointF(10, 10), QPointF(200, 10), ElementStyle())
+        pix = QPixmap(400, 200)
+        pix.fill(Qt.GlobalColor.white)
+        p = QPainter(pix)
+        elem.paint(p)
+        p.end()
+
+    def test_paint_no_crash_diagonal(self):
+        from PySide6.QtGui import QPainter
+        elem = MeasureElement(QPointF(0, 0), QPointF(300, 400), ElementStyle())
+        pix = QPixmap(600, 600)
+        pix.fill(Qt.GlobalColor.white)
+        p = QPainter(pix)
+        elem.paint(p)
+        p.end()
+
+    def test_paint_no_crash_zero_length(self):
+        """paint() with start==end must not raise (early return for length<1)."""
+        from PySide6.QtGui import QPainter
+        elem = MeasureElement(QPointF(50, 50), QPointF(50, 50), ElementStyle())
+        pix = QPixmap(200, 200)
+        pix.fill(Qt.GlobalColor.white)
+        p = QPainter(pix)
+        elem.paint(p)
+        p.end()
+
+    # ── 7. Distance calculation ───────────────────────────────────────────────
+
+    def test_distance_horizontal(self):
+        drag(self.tool, QPointF(0, 0), QPointF(100, 0))
+        elem = self.c.elements[0]
+        assert elem._distance == pytest.approx(100.0)
+
+    def test_distance_vertical(self):
+        drag(self.tool, QPointF(0, 0), QPointF(0, 75))
+        elem = self.c.elements[0]
+        assert elem._distance == pytest.approx(75.0)
+
+    def test_distance_3_4_5_triangle(self):
+        """3-4-5 right triangle: distance should be exactly 5 * scale."""
+        drag(self.tool, QPointF(0, 0), QPointF(30, 40))
+        elem = self.c.elements[0]
+        assert elem._distance == pytest.approx(50.0)
+
+    def test_distance_direct_construction(self):
+        """Distance computed correctly on a directly constructed element."""
+        import math
+        elem = MeasureElement(QPointF(10, 10), QPointF(10, 110), ElementStyle())
+        assert elem._distance == pytest.approx(100.0)
+
+        elem2 = MeasureElement(QPointF(0, 0), QPointF(3, 4), ElementStyle())
+        assert elem2._distance == pytest.approx(5.0)
+
+    # ── 8. Style (color, width) is respected ─────────────────────────────────
+
+    def test_style_color_respected(self):
+        self.c._fg_color = "#00ff00"
+        drag(self.tool, QPointF(0, 0), QPointF(100, 0))
+        elem = self.c.elements[0]
+        assert elem.style.foreground_color == "#00ff00"
+
+    def test_style_line_width_respected(self):
+        self.c._line_width = 6.0
+        drag(self.tool, QPointF(0, 0), QPointF(100, 0))
+        elem = self.c.elements[0]
+        assert elem.style.line_width == pytest.approx(6.0)
+
+    # ── 9. bounding_rect and contains_point ──────────────────────────────────
+
+    def test_bounding_rect_contains_midpoint(self):
+        drag(self.tool, QPointF(50, 100), QPointF(250, 100))
+        elem = self.c.elements[0]
+        mid = QPointF(150, 100)
+        assert elem.bounding_rect().contains(mid)
+
+    def test_contains_point_on_line(self):
+        elem = MeasureElement(QPointF(0, 100), QPointF(200, 100), ElementStyle())
+        assert elem.contains_point(QPointF(100, 100))
+
+    def test_contains_point_off_line(self):
+        elem = MeasureElement(QPointF(0, 100), QPointF(200, 100), ElementStyle())
+        assert not elem.contains_point(QPointF(100, 300))
+
+    def test_contains_point_zero_length_near_start(self):
+        """Degenerate element: contains_point near the start should return True.
+
+        Zero-length path uses manhattanLength < tolerance (default 8).
+        Manhattan distance of (3, 3) = 6 < 8, so it should hit.
+        """
+        elem = MeasureElement(QPointF(50, 50), QPointF(50, 50), ElementStyle())
+        assert elem.contains_point(QPointF(53, 53))  # Manhattan distance = 6 < 8
+
+    # ── 10. move_by shifts both endpoints ────────────────────────────────────
+
+    def test_move_by_shifts_start_and_end(self):
+        elem = MeasureElement(QPointF(10, 20), QPointF(110, 20), ElementStyle())
+        elem.move_by(5, -10)
+        assert elem.start == QPointF(15, 10)
+        assert elem.end == QPointF(115, 10)
+
+    # ── 11. Preview shown during drag ────────────────────────────────────────
+
+    def test_preview_set_during_move(self):
+        ev = _FakeEvent()
+        self.tool.on_press(QPointF(50, 50), ev)
+        self.tool.on_move(QPointF(150, 50), ev)
+        assert self.c._preview_element is not None
+        assert isinstance(self.c._preview_element, MeasureElement)
+        self.tool.on_release(QPointF(150, 50), ev)
+
+    def test_preview_cleared_after_release(self):
+        drag(self.tool, QPointF(50, 50), QPointF(200, 50))
+        assert self.c._preview_element is None

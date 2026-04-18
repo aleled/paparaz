@@ -21,6 +21,7 @@ echo.
 :: Step 1: Clean old artefacts
 echo [1/6] Cleaning previous build...
 if exist dist\PapaRaZ.exe del /f /q dist\PapaRaZ.exe
+if exist dist\PapaRaZ rmdir /s /q dist\PapaRaZ
 if exist build rmdir /s /q build
 echo Done.
 echo.
@@ -41,8 +42,8 @@ pyinstaller paparaz.spec --clean --noconfirm
 if errorlevel 1 (echo ERROR: PyInstaller build failed & exit /b 1)
 echo.
 
-if not exist "dist\PapaRaZ.exe" (
-    echo ERROR: dist\PapaRaZ.exe not found after build
+if not exist "dist\PapaRaZ\PapaRaZ.exe" (
+    echo ERROR: dist\PapaRaZ\PapaRaZ.exe not found after build
     exit /b 1
 )
 

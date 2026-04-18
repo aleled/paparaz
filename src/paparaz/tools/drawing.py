@@ -227,6 +227,7 @@ class RectangleTool(BaseTool):
         if self._current:
             r = self._current.rect.normalized()
             if r.width() >= self._MIN_SIZE and r.height() >= self._MIN_SIZE:
+                self._current.rect = r  # always store normalized rect
                 self.canvas.add_element(self._current)
         self._current = None
         self._start = None
@@ -272,6 +273,7 @@ class EllipseTool(BaseTool):
         if self._current:
             r = self._current.rect.normalized()
             if r.width() >= self._MIN_SIZE and r.height() >= self._MIN_SIZE:
+                self._current.rect = r  # always store normalized rect
                 self.canvas.add_element(self._current)
         self._current = None
         self._start = None
@@ -291,6 +293,7 @@ class CurvedArrowTool(BaseTool):
     """
 
     tool_type = ToolType.CURVED_ARROW
+    _MIN_LENGTH_SQ = 4  # discard curves shorter than 2 px (start→end distance)
 
     # Phase constants
     _PHASE_IDLE = 0   # waiting for first click
@@ -340,8 +343,11 @@ class CurvedArrowTool(BaseTool):
             self.canvas.set_preview(self._preview)
 
         elif self._phase == self._PHASE_CTRL:
-            if self._preview:
-                self.canvas.add_element(self._preview)
+            if self._preview and self._start is not None and self._end is not None:
+                dx = self._end.x() - self._start.x()
+                dy = self._end.y() - self._start.y()
+                if dx * dx + dy * dy >= self._MIN_LENGTH_SQ:
+                    self.canvas.add_element(self._preview)
             self._reset()
 
     def on_move(self, pos: QPointF, event: QMouseEvent):
@@ -365,8 +371,11 @@ class CurvedArrowTool(BaseTool):
         if key == Qt.Key.Key_Escape:
             self._reset()
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if self._phase == self._PHASE_CTRL and self._preview:
-                self.canvas.add_element(self._preview)
+            if self._phase == self._PHASE_CTRL and self._preview and self._start is not None and self._end is not None:
+                dx = self._end.x() - self._start.x()
+                dy = self._end.y() - self._start.y()
+                if dx * dx + dy * dy >= self._MIN_LENGTH_SQ:
+                    self.canvas.add_element(self._preview)
                 self._reset()
 
     # ── Hover paint ──────────────────────────────────────────────────────────

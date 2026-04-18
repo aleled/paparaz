@@ -1262,63 +1262,60 @@ class TestDrawingToolEdgeCases:
         elem = self.canvas.elements[0]
         assert isinstance(elem, RectElement)
 
-    def test_rect_drag_left_stored_rect_created(self):
-        """Dragging left must still commit an element (size check uses normalized rect)."""
+    def test_rect_drag_left_stored_rect_normalized(self):
+        """Committed RectElement must have non-negative width and height."""
         tool = RectangleTool(self.canvas)
         self.canvas.set_tool(tool)
         drag(tool, QPointF(200, 150), QPointF(50, 50))  # left & up
         assert len(self.canvas.elements) == 1
         elem = self.canvas.elements[0]
-        # The committed element's normalized rect must have positive dimensions
-        normalized = elem.rect.normalized()
-        assert normalized.width() >= 0
-        assert normalized.height() >= 0
+        # The stored rect must be normalized (non-negative dimensions)
+        assert elem.rect.width() >= 0, "RectElement.rect.width() must be >= 0 after commit"
+        assert elem.rect.height() >= 0, "RectElement.rect.height() must be >= 0 after commit"
 
     def test_rect_drag_left_correct_bounds(self):
-        """After dragging left, the normalized rect bounds must span the drag region."""
+        """After dragging left, the rect bounds must match the normalized region."""
         tool = RectangleTool(self.canvas)
         self.canvas.set_tool(tool)
         drag(tool, QPointF(200, 100), QPointF(50, 200))
         elem = self.canvas.elements[0]
-        # The raw rect may be un-normalized; check the normalized form
-        r = elem.rect.normalized()
+        r = elem.rect
         assert r.left() == pytest.approx(50)
         assert r.top() == pytest.approx(100)
         assert r.width() == pytest.approx(150)
         assert r.height() == pytest.approx(100)
 
-    def test_ellipse_drag_left_stored_rect_created(self):
-        """Dragging left must still commit an EllipseElement (size check uses normalized rect)."""
+    def test_ellipse_drag_left_stored_rect_normalized(self):
+        """Committed EllipseElement must have non-negative width and height."""
         tool = EllipseTool(self.canvas)
         self.canvas.set_tool(tool)
         drag(tool, QPointF(200, 150), QPointF(50, 50))
         assert len(self.canvas.elements) == 1
         elem = self.canvas.elements[0]
-        normalized = elem.rect.normalized()
-        assert normalized.width() >= 0
-        assert normalized.height() >= 0
+        assert elem.rect.width() >= 0, "EllipseElement.rect.width() must be >= 0 after commit"
+        assert elem.rect.height() >= 0, "EllipseElement.rect.height() must be >= 0 after commit"
 
     def test_ellipse_drag_left_correct_bounds(self):
-        """After dragging left, the normalized ellipse rect bounds must span the drag region."""
+        """After dragging left, the ellipse rect bounds must match the normalized region."""
         tool = EllipseTool(self.canvas)
         self.canvas.set_tool(tool)
         drag(tool, QPointF(200, 100), QPointF(50, 200))
         elem = self.canvas.elements[0]
-        r = elem.rect.normalized()
+        r = elem.rect
         assert r.left() == pytest.approx(50)
         assert r.top() == pytest.approx(100)
         assert r.width() == pytest.approx(150)
         assert r.height() == pytest.approx(100)
 
     def test_rect_move_by_after_negative_drag(self):
-        """move_by on a committed rect (dragged left) must shift both x and y correctly."""
+        """move_by on a committed rect (dragged left) must shift correctly."""
         tool = RectangleTool(self.canvas)
         self.canvas.set_tool(tool)
         drag(tool, QPointF(200, 100), QPointF(50, 200))
         elem = self.canvas.elements[0]
-        original_x = elem.rect.x()
+        original_left = elem.rect.left()
         elem.move_by(10, 0)
-        assert elem.rect.x() == pytest.approx(original_x + 10)
+        assert elem.rect.left() == pytest.approx(original_left + 10)
 
     # ── RectangleTool / EllipseTool: on_release without on_press ─────────────
 
@@ -1362,8 +1359,8 @@ class TestDrawingToolEdgeCases:
 
     # ── CurvedArrowTool: short / degenerate drags ─────────────────────────────
 
-    def test_curved_arrow_same_start_end_three_clicks(self):
-        """CurvedArrowTool commits on the third click regardless of degenerate geometry."""
+    def test_curved_arrow_same_start_end_not_added(self):
+        """Clicking the same point for start and end must not add a degenerate element."""
         tool = CurvedArrowTool(self.canvas)
         self.canvas.set_tool(tool)
         ev = _FakeEvent()
@@ -1374,11 +1371,12 @@ class TestDrawingToolEdgeCases:
         tool.on_press(pos, ev)
         # Phase 3: commit
         tool.on_press(pos, ev)
-        # CurvedArrowTool has no minimum-length guard; it always commits on 3rd click
-        assert len(self.canvas.elements) == 1
+        assert len(self.canvas.elements) == 0, (
+            "CurvedArrowTool must not commit a degenerate (zero-length) element"
+        )
 
-    def test_curved_arrow_short_drag_committed(self):
-        """CurvedArrowTool has no minimum-length guard — short drags are committed."""
+    def test_curved_arrow_short_drag_not_added(self):
+        """A very short curved arrow (< 2 px) must not be added."""
         tool = CurvedArrowTool(self.canvas)
         self.canvas.set_tool(tool)
         ev = _FakeEvent()
@@ -1387,8 +1385,9 @@ class TestDrawingToolEdgeCases:
         tool.on_press(start, ev)
         tool.on_press(end, ev)
         tool.on_press(QPointF(105, 90), ev)  # commit
-        assert len(self.canvas.elements) == 1
-        assert isinstance(self.canvas.elements[0], CurvedArrowElement)
+        assert len(self.canvas.elements) == 0, (
+            "CurvedArrowTool must not commit a near-zero-length element"
+        )
 
     def test_curved_arrow_normal_drag_added(self):
         """A normal curved arrow must be committed on third click."""

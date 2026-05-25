@@ -548,15 +548,31 @@ class EditorWindow(QWidget):
         """Apply saved properties for tool_type directly to canvas + panel UI."""
         if not self._settings_manager:
             return
+        # Reset transient state that bleeds between tools when a tool has no
+        # saved value: opacity and shadow must start at their defaults so a tool
+        # that never saved these doesn't inherit another tool's semi-transparency.
+        c = self._canvas
+        c._opacity = 1.0
+        c._shadow.enabled = False
+
         props = self._settings_manager.settings.tool_properties.get(tool_type.name, {})
         if not props:
+            self._side_panel.apply_properties_silent({"opacity": 1.0, "shadow_enabled": False})
             return
         # Update canvas template state directly (bypasses setters → no undo entries)
-        c = self._canvas
-        if "foreground_color" in props: c._fg_color = props["foreground_color"]
-        if "background_color" in props: c._bg_color = props["background_color"]
+        # Strip any alpha — fg/bg color should always be fully opaque
+        # (transparency is controlled by the opacity slider, not the color).
+        if "foreground_color" in props:
+            _fc = QColor(props["foreground_color"]); _fc.setAlpha(255)
+            c._fg_color = _fc.name(QColor.NameFormat.HexRgb)
+        if "background_color" in props:
+            _bc = QColor(props["background_color"]); _bc.setAlpha(255)
+            c._bg_color = _bc.name(QColor.NameFormat.HexRgb)
         if "line_width" in props:       c._line_width = float(props["line_width"])
-        if "opacity" in props:          c._opacity = float(props["opacity"])
+        # Skip loading opacity — always start fully opaque. Persisted opacity
+        # from earlier sessions silently dims newly created elements (looks
+        # like a bug to users); they can still adjust it live this session.
+        # if "opacity" in props:          c._opacity = float(props["opacity"])
         if "cap_style" in props:        c._cap_style = props["cap_style"]
         if "join_style" in props:       c._join_style = props["join_style"]
         if "dash_pattern" in props:     c._dash_pattern = props["dash_pattern"]
@@ -658,14 +674,18 @@ class EditorWindow(QWidget):
             panel_h = self._side_panel.height()
             panel_y = max(screen_rect.top(), min(editor_global.y(), screen_rect.bottom() - panel_h))
             self._side_panel.move(panel_x, panel_y)
-        # Apply default zoom on first show
+        # Apply default zoom on first show.
+        # Defer by one event-loop cycle so Qt has time to finish the layout pass
+        # (resizeEvent / relayout runs after showEvent, so canvas.width() is
+        # still 0 here on Windows — reading it directly gives z = 0 → 0.1).
         if not getattr(self, '_initial_zoom_applied', False):
             self._initial_zoom_applied = True
-            self._apply_default_zoom()
+            QTimer.singleShot(0, self._apply_default_zoom)
 
     def _on_zoom_changed(self, zoom: float):
         """Adapt window size to fit the zoomed content, clamped to screen."""
-        # Suppress during initial zoom — window was already sized correctly in _open_editor
+        # Suppress during initial zoom — _open_editor's post-show resize
+        # already handles the initial sizing precisely.
         if getattr(self, '_applying_initial_zoom', False):
             return
         bg = self._canvas._background
@@ -704,11 +724,14 @@ class EditorWindow(QWidget):
             self._canvas.set_zoom(zoom)
 
     def _apply_default_zoom(self):
-        """Set zoom level based on user preference.
+        """Set zoom level based on user preference, then snap window to image.
 
-        The window geometry was already sized to fit the image in _open_editor, so we
-        suppress the zoom-changed resize handler during this initial zoom application to
-        avoid the window shrinking due to chrome-height estimation errors.
+        Runs deferred (QTimer.singleShot 0) so layout has finished and
+        canvas.width() / canvas.height() are the real post-layout values.
+        After setting zoom, resize the window so canvas == image×zoom with
+        no leftover empty canvas — done here synchronously rather than
+        relying on _on_zoom_changed so the native WM_SIZE round-trip does
+        not cause a visible flash.
         """
         if not self._settings_manager:
             return
@@ -717,23 +740,25 @@ class EditorWindow(QWidget):
         bg = self._canvas._background
         self._applying_initial_zoom = True
         try:
+            if self.layout():
+                self.layout().activate()
+            canvas_w = self._canvas.width()
+            canvas_h = self._canvas.height()
             if mode == "100":
-                self._canvas.set_zoom(1.0)
+                z = 1.0
             elif mode == "fill":
-                canvas_w = self._canvas.width()
-                canvas_h = self._canvas.height()
-                if bg.width() > 0 and bg.height() > 0:
+                if bg.width() > 0 and bg.height() > 0 and canvas_w > 0 and canvas_h > 0:
                     z = max(canvas_w / bg.width(), canvas_h / bg.height())
-                    self._canvas.set_zoom(z)
+                else:
+                    z = 1.0
             elif mode == "remember":
-                z = getattr(s, 'last_zoom_level', 1.0)
-                self._canvas.set_zoom(max(0.1, min(10.0, z)))
-            else:  # "fit" — default
-                canvas_w = self._canvas.width()
-                canvas_h = self._canvas.height()
-                if bg.width() > 0 and bg.height() > 0:
+                z = max(0.1, min(10.0, getattr(s, 'last_zoom_level', 1.0)))
+            else:  # "fit"
+                if bg.width() > 0 and bg.height() > 0 and canvas_w > 0 and canvas_h > 0:
                     z = min(canvas_w / bg.width(), canvas_h / bg.height(), 1.0)
-                    self._canvas.set_zoom(z)
+                else:
+                    z = 1.0
+            self._canvas.set_zoom(z)
         finally:
             self._applying_initial_zoom = False
 
@@ -1386,7 +1411,17 @@ class EditorWindow(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def _copy_to_clipboard(self):
-        copy_to_clipboard(self._canvas.render_to_pixmap())
+        bg = self._canvas._background
+        rendered = self._canvas.render_to_pixmap()
+        try:
+            with open("C:/Users/4lele/AppData/Local/Temp/pz_debug.log", "a") as _dbg:
+                _dbg.write(f"[COPY] bg={bg.width()}x{bg.height()} bg_dpr={bg.devicePixelRatio()} ")
+                _dbg.write(f"rendered={rendered.width()}x{rendered.height()} rendered_dpr={rendered.devicePixelRatio()} ")
+                _dbg.write(f"canvas={self._canvas.width()}x{self._canvas.height()} zoom={self._canvas.zoom:.3f} ")
+                _dbg.write(f"win={self.width()}x{self.height()}\n")
+        except Exception:
+            pass
+        copy_to_clipboard(rendered)
 
     def _paste(self):
         if self._canvas.paste_from_clipboard():

@@ -125,11 +125,13 @@ QMenu::separator {
 """
 
 
-# Tools that have configurable properties (show 3-dot indicator)
+# Tools that have configurable properties (show 3-dot indicator + right-click opens panel)
 _TOOLS_WITH_PROPS = {
     ToolType.PEN, ToolType.BRUSH, ToolType.HIGHLIGHT, ToolType.LINE, ToolType.ARROW,
+    ToolType.CURVED_ARROW,
     ToolType.RECTANGLE, ToolType.ELLIPSE, ToolType.TEXT,
     ToolType.NUMBERING, ToolType.MASQUERADE, ToolType.FILL, ToolType.STAMP,
+    ToolType.MEASURE,
 }
 
 
@@ -336,7 +338,10 @@ class MultiEdgeToolbar(QObject):
             self._buttons.append(btn)
             sig = self._action_signals.get(sig_key)
             if sig:
-                btn.clicked.connect(sig.emit)
+                # Signal-to-signal: Qt drops the extra bool arg from clicked(bool).
+                # Connecting to sig.emit() instead would raise TypeError at runtime
+                # because clicked emits (bool) but Signal() expects 0 arguments.
+                btn.clicked.connect(sig)
 
     def _make_btn(self, icon_name: str, tooltip: str, checkable: bool,
                   parent_strip: ToolStrip, tool_type: ToolType | None = None) -> QToolButton:

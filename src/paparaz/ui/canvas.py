@@ -912,15 +912,13 @@ class AnnotationCanvas(QWidget):
     # --- Rendering for export ---
 
     def render_to_pixmap(self) -> QPixmap:
-        # Use physical pixel size so HiDPI captures export at full resolution.
-        dpr = self._background.devicePixelRatio()
-        phys_w = max(1, int(self._background.width() * dpr))
-        phys_h = max(1, int(self._background.height() * dpr))
-        result = QPixmap(phys_w, phys_h)
-        result.setDevicePixelRatio(dpr)
+        # Start from an exact copy of the background — preserves DPR, physical
+        # dimensions, and pixel data with no rounding artifacts.  Computing
+        # phys_w/phys_h manually with int(width * dpr) introduced off-by-one
+        # rounding that left uninitialized rows/columns showing as black.
+        result = self._background.copy()
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.drawPixmap(0, 0, self._background)
 
         for elem in self.elements:
             if isinstance(elem, MaskElement) and elem.visible:

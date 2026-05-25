@@ -567,35 +567,109 @@ class PapaRazApp(QObject):
         # Auto-save capture to recent so the tray menu is always populated
         self._auto_save_recent(pixmap)
 
-        # Restore saved geometry or size to capture + toolbar chrome
+        # Size window to fit the capture; restore only the saved position.
+        # Using saved geometry SIZE is wrong when a new capture is a different
+        # shape than the previous session's — the image would appear tiny in
+        # an oversized window (or get clipped in an undersized one).
+        screen = QApplication.primaryScreen()
+        avail = screen.availableGeometry() if screen else None
+        if avail is None:
+            from PySide6.QtCore import QRect
+            avail = QRect(0, 0, 1920, 1080)
+
+        chrome_w = 50   # margins + right strip + spacing (right strip almost always shows)
+        chrome_h = 95   # top strip(40) + status(25) + hint(18) + spacings/margins(12)
+        win_w = min(pixmap.width() + chrome_w, avail.width() - 40)
+        win_h = min(pixmap.height() + chrome_h, avail.height() - 40)
+        # Floor at the editor's actual minimum (120x80), not 400x250, otherwise
+        # small captures (e.g. a tooltip, an icon) get forced into an oversized
+        # window with empty canvas around them.
+        win_w = max(win_w, 120)
+        win_h = max(win_h, 80)
+
+        # Default: centre on screen, cascade additional editors
+        offset = (len(self._editors) - 1) * 24
+        x = avail.x() + (avail.width()  - win_w) // 2 + offset
+        y = avail.y() + (avail.height() - win_h) // 2 + offset
+
+        # Restore saved position (x, y only) so the window reopens in the
+        # same spot the user last placed it, but always use the computed size.
+        # Use the screen that contains the saved position for clamping so
+        # windows on secondary monitors aren't pulled back to the primary.
         saved_geo = getattr(self._settings.settings, 'window_geometry', '')
-        restored = False
         if saved_geo and len(self._editors) == 1:
             try:
                 parts = [int(v) for v in saved_geo.split(',')]
-                if len(parts) == 4:
-                    x, y, w, h = parts
-                    editor.setGeometry(x, y, max(w, 400), max(h, 250))
-                    restored = True
+                if len(parts) >= 2:
+                    sx, sy = parts[0], parts[1]
+                    from PySide6.QtCore import QPoint as _QPoint
+                    saved_screen = QApplication.screenAt(_QPoint(sx, sy))
+                    sg = saved_screen.availableGeometry() if saved_screen else avail
+                    x = max(sg.left(), min(sx, sg.right()  - win_w))
+                    y = max(sg.top(),  min(sy, sg.bottom() - win_h))
             except (ValueError, TypeError):
                 pass
-        if not restored:
-            screen = QApplication.primaryScreen()
-            if screen:
-                avail = screen.availableGeometry()
-                chrome_w = 8    # left + right layout margins
-                chrome_h = 100  # toolbar(40) + status(25) + hint(15) + spacing+margins(20)
-                win_w = min(pixmap.width() + chrome_w, avail.width() - 40)
-                win_h = min(pixmap.height() + chrome_h, avail.height() - 40)
-                win_w = max(win_w, 400)
-                win_h = max(win_h, 250)
-                offset = (len(self._editors) - 1) * 24
-                x = avail.x() + (avail.width()  - win_w) // 2 + offset
-                y = avail.y() + (avail.height() - win_h) // 2 + offset
-                x = min(x, avail.right()  - win_w)
-                y = min(y, avail.bottom() - win_h)
-                editor.setGeometry(x, y, win_w, win_h)
+
+        x = min(x, avail.right()  - win_w)
+        y = min(y, avail.bottom() - win_h)
+        editor.setGeometry(x, y, win_w, win_h)
         editor.show()
+
+        # Post-show snap.  Goal: canvas widget == image_at_zoom (no empty
+        # canvas around the image).  When the screen is too small to fit
+        # pixmap+chrome at z=1.0, we must REDUCE BOTH dimensions of the
+        # window so canvas matches image_at_zoom — not just clamp height
+        # while keeping full pixmap width.  Iterate to handle relayout.
+        try:
+            from PySide6.QtCore import QEventLoop as _QEventLoop
+            mode = getattr(self._settings.settings, 'default_zoom', 'fit')
+            for _ in range(5):
+                QApplication.processEvents(
+                    _QEventLoop.ProcessEventsFlag.AllEvents, 50)
+                if editor.layout():
+                    editor.layout().activate()
+                canvas_w_actual = editor._canvas.width()
+                canvas_h_actual = editor._canvas.height()
+                if canvas_w_actual <= 0 or canvas_h_actual <= 0:
+                    continue
+                chrome_w_real = editor.width()  - canvas_w_actual
+                chrome_h_real = editor.height() - canvas_h_actual
+
+                # Compute the zoom level that lets the WHOLE image fit in
+                # the available canvas space on this screen.
+                avail_canvas_w = max(1, avail.width()  - 40 - chrome_w_real)
+                avail_canvas_h = max(1, avail.height() - 40 - chrome_h_real)
+                if mode == "100":
+                    z = 1.0
+                elif mode == "fill":
+                    z = max(avail_canvas_w / pixmap.width(), avail_canvas_h / pixmap.height())
+                elif mode == "remember":
+                    z = max(0.1, min(10.0, getattr(self._settings.settings, 'last_zoom_level', 1.0)))
+                else:  # "fit"
+                    z = min(avail_canvas_w / pixmap.width(), avail_canvas_h / pixmap.height(), 1.0)
+
+                # Target = image-at-zoom + chrome.  This ensures canvas
+                # widget exactly equals image_at_zoom (no empty around it).
+                target_canvas_w = max(1, int(pixmap.width()  * z))
+                target_canvas_h = max(1, int(pixmap.height() * z))
+                target_win_w = max(120, target_canvas_w + chrome_w_real)
+                target_win_h = max(80,  target_canvas_h + chrome_h_real)
+
+                if (abs(target_win_w - editor.width())  <= 1 and
+                    abs(target_win_h - editor.height()) <= 1):
+                    break   # stable
+                editor.resize(target_win_w, target_win_h)
+
+            # Final zoom pass on the stable layout
+            QApplication.processEvents(
+                _QEventLoop.ProcessEventsFlag.AllEvents, 50)
+            editor._applying_initial_zoom = True
+            try:
+                editor._canvas.set_zoom(z)
+            finally:
+                editor._applying_initial_zoom = False
+        except Exception:
+            pass
 
     def _auto_save_recent(self, pixmap: QPixmap):
         """Save capture to a temp directory and add to recent captures list."""

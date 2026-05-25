@@ -1,5 +1,16 @@
 # PapaRaZ - Changelog
 
+## [1.0.1] - 2026-05-25
+
+### Bug Fixes
+- **Canvas size matches captured region** — the editor window now sizes precisely to the captured image with no checkerboard/black gap around it.  Iterative post-show layout pass computes the correct zoom for the available screen space and sizes the window to `image_at_zoom + chrome`, so canvas widget exactly equals `image_at_zoom`.
+- **Copy-to-clipboard produces exact bg copy** — `render_to_pixmap` now uses `bg.copy()` instead of computing physical dimensions via `int(width × dpr)`, eliminating off-by-one rounding artifacts that left uninitialized rows/columns showing as black borders on paste.
+- **Undo/redo toolbar buttons** — fixed `TypeError` when clicking undo/redo/save/copy/etc. in the toolbar; signal-to-signal connection now drops the extra `bool` from `QToolButton.clicked` instead of passing it to a no-arg signal's `emit`.
+- **Text dimming after exit** — newly created elements always start fully opaque; saved low opacity from earlier sessions is no longer applied on load.
+- **Color picker alpha** — FG/BG color dialogs no longer show the alpha channel and strip any incoming alpha; transparency is controlled exclusively via the opacity slider, so picked colors are always fully opaque.
+- **Multi-monitor positioning** — saved window position on a secondary monitor is no longer dragged back to the primary screen; clamping uses `QApplication.screenAt(saved_pos)` for per-monitor bounds.
+- **CurvedArrow and Measure tool properties** — added to `_TOOLS_WITH_PROPS` so their toolbar buttons get the 3-dot indicator and right-click opens the properties panel.
+
 ## [1.0.0] - 2026-04-18
 
 ### .papraz Project File Format

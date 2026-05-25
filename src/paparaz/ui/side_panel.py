@@ -1576,19 +1576,27 @@ class SidePanel(QWidget):
     # --- Color pickers ---
 
     def _pick_fg_color(self):
-        c = QColorDialog.getColor(QColor(self._fg_color), self, "Foreground",
-                                   QColorDialog.ColorDialogOption.ShowAlphaChannel)
+        # Strip alpha — element transparency is controlled by the opacity
+        # slider, not embedded in the color.  Showing the alpha channel here
+        # caused new picks to inherit the previous color's alpha, leaving
+        # text invisible even though "the color changed".
+        cur = QColor(self._fg_color)
+        cur.setAlpha(255)
+        c = QColorDialog.getColor(cur, self, "Foreground")
         if c.isValid():
-            self._fg_color = c.name(QColor.NameFormat.HexArgb)
+            c.setAlpha(255)
+            self._fg_color = c.name(QColor.NameFormat.HexRgb)
             self._update_swatch(self._fg_btn, self._fg_color)
             self._recent_palette.add_color(self._fg_color)
             self.fg_color_changed.emit(self._fg_color)
 
     def _pick_bg_color(self):
-        c = QColorDialog.getColor(QColor(self._bg_color), self, "Background",
-                                   QColorDialog.ColorDialogOption.ShowAlphaChannel)
+        cur = QColor(self._bg_color)
+        cur.setAlpha(255)
+        c = QColorDialog.getColor(cur, self, "Background")
         if c.isValid():
-            self._bg_color = c.name(QColor.NameFormat.HexArgb)
+            c.setAlpha(255)
+            self._bg_color = c.name(QColor.NameFormat.HexRgb)
             self._update_swatch(self._bg_btn, self._bg_color)
             self._recent_palette.add_color(self._bg_color)
             self.bg_color_changed.emit(self._bg_color)
@@ -1644,12 +1652,14 @@ class SidePanel(QWidget):
 
     def _apply_palette_fg(self, color: str):
         """Apply a color from the recent palette as foreground."""
-        self._fg_color = color
+        c = QColor(color); c.setAlpha(255)
+        self._fg_color = c.name(QColor.NameFormat.HexRgb)
         self._update_swatch(self._fg_btn, self._fg_color)
         self.fg_color_changed.emit(self._fg_color)
 
     def _apply_palette_bg(self, color: str):
         """Apply a color from the recent palette as background."""
-        self._bg_color = color
+        c = QColor(color); c.setAlpha(255)
+        self._bg_color = c.name(QColor.NameFormat.HexRgb)
         self._update_swatch(self._bg_btn, self._bg_color)
         self.bg_color_changed.emit(self._bg_color)

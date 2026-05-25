@@ -3,7 +3,7 @@
 ; Build: right-click this file → Compile, or: iscc installer\paparaz_setup.iss
 
 #define AppName      "PapaRaZ"
-#define AppVersion   "1.0.0"
+#define AppVersion   "1.0.1"
 #define AppPublisher "Alejandro Lichtenfeld"
 #define AppURL       "https://github.com/aleled/paparaz"
 #define AppExeName   "PapaRaZ.exe"
